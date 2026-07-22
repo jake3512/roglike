@@ -7,62 +7,99 @@
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Nanum+Gothic:wght@400;700&display=swap');
 
 :root{
-  --bg: #0d0b12;
-  --stone: #1c1824;
-  --stone-light: #2a2433;
-  --blood: #b3273f;
-  --candle: #e8c77e;
+  --bg: #08050f;
+  --stone: #17111f;
+  --stone-light: #2a1f3d;
+  --blood: #ff3868;
+  --candle: #ffd23f;
   --moss: #5a7a4f;
-  --bone: #d8cfc0;
-  --common: #9a94a6;
-  --rare: #4a9dd9;
-  --legendary: #e8b23e;
+  --bone: #f2ece0;
+  --common: #7dd8ff;
+  --rare: #4aa8ff;
+  --legendary: #ffb23e;
+  --cyan: #2ee6d6;
+  --violet: #b26bff;
 }
 
 *{ box-sizing: border-box; }
 
+html{
+  height:100%;
+  overscroll-behavior: none;
+}
 body{
   margin:0;
-  min-height:100vh;
-  background: radial-gradient(circle at 50% 20%, #1a1522 0%, var(--bg) 70%);
+  height:100%;
+  overflow:hidden;
+  overscroll-behavior: none;
+  background:
+    radial-gradient(circle at 50% 0%, #1c1330 0%, var(--bg) 55%);
   display:flex;
   flex-direction:column;
   align-items:center;
   justify-content:center;
   font-family: 'Nanum Gothic', sans-serif;
   color: var(--bone);
-  padding: 16px;
+  padding: 10px;
 }
 
 h1{
   font-family: 'Press Start 2P', monospace;
-  font-size: 16px;
+  font-size: 20px;
   color: var(--candle);
-  letter-spacing: 2px;
-  text-shadow: 0 0 12px rgba(232,199,126,0.5);
-  margin: 0 0 4px 0;
+  letter-spacing: 3px;
+  text-shadow: 0 0 6px rgba(255,255,255,0.5), 0 0 16px var(--candle), 0 0 34px rgba(255,210,63,0.5);
+  margin: 0 0 6px 0;
   text-align:center;
+  animation: marqueePulse 2.4s ease-in-out infinite;
+}
+@keyframes marqueePulse{
+  0%,100%{ text-shadow: 0 0 6px rgba(255,255,255,0.5), 0 0 16px var(--candle), 0 0 34px rgba(255,210,63,0.5); }
+  50%{ text-shadow: 0 0 4px rgba(255,255,255,0.5), 0 0 10px var(--candle), 0 0 20px rgba(255,210,63,0.35); }
 }
 
 .subtitle{
   font-size: 12px;
-  color: #8a8296;
+  color: var(--cyan);
   margin-bottom: 14px;
   letter-spacing: 1px;
   text-align:center;
+  text-shadow: 0 0 8px rgba(46,230,214,0.4);
 }
 
-#app{ width: min(800px, 96vw); }
+#app{ width: min(800px, 96vw); max-height: calc(100dvh - 118px); overflow-y: auto; }
 
 .game-frame{
   position: relative;
-  border: 3px solid var(--stone-light);
-  border-radius: 6px;
-  box-shadow: 0 0 0 1px #000, 0 20px 60px rgba(0,0,0,0.6), 0 0 40px rgba(179,39,63,0.08) inset;
+  border: 4px solid var(--stone-light);
+  border-radius: 10px;
+  box-shadow:
+    0 0 0 2px #000,
+    0 0 0 5px #3a2a52,
+    0 20px 60px rgba(0,0,0,0.7),
+    0 0 50px rgba(178,107,255,0.15);
   background: var(--stone);
   width: 100%;
   touch-action: none;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
 }
+.screen-area{
+  position:relative;
+  width:100%;
+  touch-action:none;
+}
+.screen-area::before, .screen-area::after{
+  content:'';
+  position:absolute; top:8px;
+  width:8px; height:8px; border-radius:50%;
+  background: radial-gradient(circle at 35% 35%, #6a5c80, #241a33);
+  box-shadow: 0 0 4px rgba(0,0,0,0.6);
+  z-index:6;
+}
+.screen-area::before{ left:8px; }
+.screen-area::after{ right:8px; }
 
 #gameCanvas{
   display:block;
@@ -70,39 +107,73 @@ h1{
   image-rendering: pixelated;
   width: 100%;
   height: auto;
-  aspect-ratio: 800 / 520;
+  aspect-ratio: 16 / 9;
   touch-action: none;
 }
 
-.joystick{
-  position:absolute;
-  bottom: 18px;
-  width: 108px; height: 108px;
-  border-radius: 50%;
-  background: rgba(232,199,126,0.06);
-  border: 2px solid rgba(232,199,126,0.35);
-  touch-action: none;
-  z-index: 5;
+.scanlines{
+  position:absolute; inset:0;
+  pointer-events:none;
+  z-index:3;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0,0,0,0.18) 0px,
+    rgba(0,0,0,0.18) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  mix-blend-mode: multiply;
 }
-#joyMove{ left: 18px; }
-#joyAim{ right: 18px; }
+.crt-vignette{
+  position:absolute; inset:0;
+  pointer-events:none;
+  z-index:4;
+  box-shadow: inset 0 0 90px 30px rgba(0,0,0,0.65);
+}
+
+/* Control bar sits BELOW the screen, entirely outside the canvas, so the
+   joysticks never sit on top of (or block) gameplay. */
+.control-bar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding: 10px 16px 22px;
+  background: linear-gradient(180deg, #241a33, #150f20);
+  border-top: 2px solid var(--stone-light);
+  touch-action: none;
+  flex-shrink:0;
+}
+
+.joystick{
+  position:relative;
+  width: 84px; height: 84px;
+  border-radius: 50%;
+  background: rgba(46,230,214,0.06);
+  border: 2px solid rgba(46,230,214,0.4);
+  box-shadow: 0 0 16px rgba(46,230,214,0.2);
+  touch-action: none;
+  flex-shrink:0;
+}
 .joystick .knob{
   position:absolute;
   left:50%; top:50%;
-  width: 46px; height:46px;
-  margin-left:-23px; margin-top:-23px;
+  width: 38px; height:38px;
+  margin-left:-19px; margin-top:-19px;
   border-radius:50%;
-  background: rgba(232,199,126,0.55);
-  border: 2px solid var(--candle);
+  background: radial-gradient(circle at 35% 30%, #ffe98a, var(--candle));
+  border: 2px solid #fff3c4;
+  box-shadow: 0 0 10px rgba(255,210,63,0.6);
   pointer-events:none;
 }
 .joystick .label{
   position:absolute;
-  bottom:-20px; left:0; right:0;
+  bottom:-17px; left:0; right:0;
   text-align:center;
   font-family:'Press Start 2P', monospace;
-  font-size:8px;
-  color:#8a8296;
+  font-size:7px;
+  color: var(--cyan);
+  text-shadow: 0 0 4px rgba(46,230,214,0.5);
 }
 
 .hud{
@@ -114,24 +185,31 @@ h1{
   pointer-events:none;
   font-family: 'Press Start 2P', monospace;
   font-size: 10px;
+  z-index: 8;
+}
+.hud-chip{
+  background: rgba(5,3,12,0.72);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 6px;
+  padding: 6px 9px;
 }
 
-#hearts{ display:flex; gap:4px; }
+#hearts{ display:flex; gap:5px; }
 .heart{
-  width:16px; height:16px;
+  width:18px; height:18px;
   background: var(--blood);
   clip-path: polygon(50% 15%, 61% 5%, 75% 5%, 88% 15%, 88% 30%, 50% 65%, 12% 30%, 12% 15%, 25% 5%, 39% 5%);
-  filter: drop-shadow(0 0 3px rgba(179,39,63,0.8));
+  filter: drop-shadow(0 0 5px rgba(255,56,104,0.9));
 }
 .heart.half{ opacity:0.5; }
-.heart.empty{ background: #3a2f38; filter:none; }
+.heart.empty{ background: #2c2438; filter:none; }
 
-.hud-right{ text-align:right; display:flex; flex-direction:column; gap:4px; align-items:flex-end; }
-#stageLabel{ color:#e89a4e; text-shadow: 0 0 6px rgba(0,0,0,0.8); }
-#roomLabel{ color: var(--candle); text-shadow: 0 0 6px rgba(0,0,0,0.8); }
-#runCoins{ color: #f0d98c; text-shadow: 0 0 6px rgba(0,0,0,0.8); }
-#runCoins::before{ content: "◆ "; }
-#weaponLabel{ color:#a9d4f0; text-shadow: 0 0 6px rgba(0,0,0,0.8); font-size:8px; }
+.hud-right{ text-align:right; display:flex; flex-direction:column; gap:6px; align-items:flex-end; }
+#stageLabel{ color:#ff9a4e; text-shadow: 0 0 8px rgba(255,154,78,0.6); }
+#roomLabel{ color: var(--candle); text-shadow: 0 0 8px rgba(255,210,63,0.5); }
+#runCoins{ color: #ffe98a; text-shadow: 0 0 8px rgba(255,233,138,0.6); }
+#runCoins::before{ content: "◆ "; color: var(--candle); }
+#weaponLabel{ color: var(--cyan); text-shadow: 0 0 8px rgba(46,230,214,0.5); font-size:8px; }
 
 .overlay{
   position:absolute; inset:0;
@@ -139,7 +217,7 @@ h1{
   display:none;
   align-items:center; justify-content:center;
   flex-direction:column;
-  background: rgba(10,8,14,0.9);
+  background: rgba(5,3,10,0.94);
   text-align:center;
   gap: 14px;
   padding: 20px;
@@ -147,40 +225,46 @@ h1{
 .overlay.show{ display:flex; }
 .overlay h2{
   font-family:'Press Start 2P', monospace;
-  font-size: 20px;
+  font-size: 22px;
   color: var(--blood);
-  text-shadow: 0 0 16px rgba(179,39,63,0.6);
+  text-shadow: 0 0 8px rgba(255,255,255,0.6), 0 0 22px var(--blood), 0 0 40px rgba(255,56,104,0.6);
+  animation: marqueePulse 1.6s ease-in-out infinite;
 }
-.overlay h2.win{ color: var(--candle); text-shadow: 0 0 16px rgba(232,199,126,0.6); }
-.overlay p{ font-size:13px; color:#b5adc0; max-width:320px; line-height:1.6; }
+.overlay h2.win{ color: var(--candle); text-shadow: 0 0 8px rgba(255,255,255,0.6), 0 0 22px var(--candle), 0 0 40px rgba(255,210,63,0.6); }
+.overlay p{ font-size:13px; color:#cfc8dc; max-width:320px; line-height:1.6; }
 
 button{
   font-family:'Press Start 2P', monospace;
   font-size: 11px;
-  background: var(--blood);
-  color: var(--bone);
-  border:none;
-  padding: 12px 20px;
-  border-radius:4px;
+  background: linear-gradient(180deg, #ff5c85, var(--blood) 55%, #c41f4d);
+  color: #fff;
+  border: 2px solid #ffb3c4;
+  padding: 13px 20px;
+  border-radius:8px;
   cursor:pointer;
   letter-spacing:1px;
-  box-shadow: 0 4px 0 #7a1a29;
+  box-shadow: 0 5px 0 #7a1230, 0 8px 16px rgba(255,56,104,0.25);
   transition: transform 0.08s;
 }
-button:active{ transform: translateY(4px); box-shadow:none; }
-button.secondary{ background: var(--stone-light); box-shadow: 0 4px 0 #14111a; }
+button:active{ transform: translateY(4px); box-shadow: 0 1px 0 #7a1230; }
+button.secondary{
+  background: linear-gradient(180deg, #3a2c52, var(--stone-light) 55%, #1c1428);
+  border-color:#6a5688;
+  box-shadow: 0 5px 0 #0f0a18, 0 8px 16px rgba(0,0,0,0.3);
+}
+button.secondary:active{ box-shadow: 0 1px 0 #0f0a18; }
 button:disabled{ opacity:0.4; cursor:not-allowed; }
 
 .controls{
   margin-top: 14px;
   font-size: 11px;
-  color: #74697f;
+  color: #9089a3;
   display:flex;
   gap: 22px;
   justify-content:center;
   flex-wrap:wrap;
 }
-.controls span b{ color: var(--bone); }
+.controls span b{ color: var(--cyan); }
 
 .page{ display:none; }
 .page.active{ display:flex; flex-direction:column; gap:16px; }
@@ -191,75 +275,85 @@ button:disabled{ opacity:0.4; cursor:not-allowed; }
   justify-content:center;
   gap:8px;
   font-family:'Press Start 2P', monospace;
-  font-size:13px;
-  color:#f0d98c;
+  font-size:14px;
+  color:#ffe98a;
   background: var(--stone);
   border:2px solid var(--stone-light);
-  border-radius:6px;
-  padding:12px;
+  border-radius:8px;
+  padding:14px;
+  box-shadow: 0 0 20px rgba(255,210,63,0.12);
 }
-.currency-bar::before{ content:"◆"; color:#f0d98c; }
+.currency-bar::before{ content:"◆"; color: var(--candle); text-shadow: 0 0 8px rgba(255,210,63,0.7); }
 
 .page-box{
   background: var(--stone);
   border:2px solid var(--stone-light);
-  border-radius:8px;
+  border-radius:10px;
   padding:20px;
+  box-shadow: 0 0 24px rgba(0,0,0,0.35);
 }
 
 .home-buttons{ display:flex; flex-direction:column; gap:10px; }
-.home-buttons button{ width:100%; padding:16px; font-size:12px; }
+.home-buttons button{ width:100%; padding:17px; font-size:12px; }
 
 .equip-summary{ display:flex; gap:8px; justify-content:center; margin-top:10px; flex-wrap:wrap; }
 .equip-slot-mini{
-  width:44px; height:44px; border-radius:6px;
+  width:46px; height:46px; border-radius:8px;
   border:2px dashed #4a4457;
   display:flex; align-items:center; justify-content:center;
-  font-size:7px; color:#5a5468; text-align:center; padding:2px;
+  font-size:7px; color:#6a637a; text-align:center; padding:2px;
+  background: rgba(0,0,0,0.2);
 }
-.equip-slot-mini.filled{ border-style:solid; color:#1a1420; }
-.equip-slot-mini.weapon{ border-color:#a9d4f0; }
+.equip-slot-mini.filled{ border-style:solid; color:#1a1420; box-shadow: 0 0 10px currentColor; }
+.equip-slot-mini.weapon{ border-color: var(--cyan); }
 
 .stage-row{ display:flex; gap:8px; justify-content:center; flex-wrap:wrap; }
 .stage-btn{
   font-family:'Press Start 2P', monospace;
-  font-size:11px;
-  width:44px; height:44px;
-  border-radius:6px;
+  font-size:12px;
+  width:46px; height:46px;
+  border-radius:8px;
   border:2px solid var(--stone-light);
-  background:#171320;
-  color:#9d95a8;
+  background:#120d1c;
+  color:#8880a0;
   cursor:pointer;
   display:flex; align-items:center; justify-content:center;
+  transition: transform 0.1s;
 }
-.stage-btn.selected{ border-color:var(--candle); color:var(--candle); box-shadow:0 0 10px rgba(232,199,126,0.4); }
+.stage-btn.selected{
+  border-color: var(--candle); color: var(--candle);
+  box-shadow: 0 0 14px rgba(255,210,63,0.55);
+  transform: scale(1.08);
+}
 
 .gacha-stage{
   display:flex; flex-direction:column; align-items:center; gap:14px;
   min-height:220px; justify-content:center;
 }
 .pull-card{
-  width:190px; padding:18px 14px; border-radius:10px;
+  width:190px; padding:18px 14px; border-radius:12px;
   text-align:center; border:3px solid var(--common);
-  background: linear-gradient(160deg, #221d2c, #17131e);
+  background: linear-gradient(160deg, #241c33, #140f1f);
   animation: reveal 0.35s ease;
+  box-shadow: 0 0 20px rgba(125,216,255,0.25);
 }
-.pull-card.rare{ border-color: var(--rare); box-shadow:0 0 24px rgba(74,157,217,0.35); }
-.pull-card.legendary{ border-color: var(--legendary); box-shadow:0 0 28px rgba(232,178,62,0.45); }
+.pull-card.rare{ border-color: var(--rare); box-shadow:0 0 28px rgba(74,168,255,0.4); }
+.pull-card.legendary{ border-color: var(--legendary); box-shadow:0 0 32px rgba(255,178,62,0.55); animation: reveal 0.35s ease, legendGlow 1.8s ease-in-out infinite 0.35s; }
 @keyframes reveal{ from{ transform:scale(0.7); opacity:0; } to{ transform:scale(1); opacity:1; } }
-.pull-card .icon{ width:56px; height:56px; margin:0 auto 10px; border-radius:50%; }
+@keyframes legendGlow{ 0%,100%{ box-shadow:0 0 32px rgba(255,178,62,0.55); } 50%{ box-shadow:0 0 46px rgba(255,178,62,0.85); } }
+.pull-card .icon{ width:56px; height:56px; margin:0 auto 10px; border-radius:50%; box-shadow: 0 0 16px rgba(255,255,255,0.15); }
 .pull-card .rarity-tag{ font-family:'Press Start 2P', monospace; font-size:8px; margin-bottom:4px; letter-spacing:1px; }
 .pull-card.common .rarity-tag{ color: var(--common); }
 .pull-card.rare .rarity-tag{ color: var(--rare); }
 .pull-card.legendary .rarity-tag{ color: var(--legendary); }
-.pull-card .type-tag{ font-size:9px; color:#7a7488; margin-bottom:8px; }
-.pull-card .item-name{ font-size:14px; font-weight:700; margin-bottom:6px; }
-.pull-card .item-desc{ font-size:11px; color:#b5adc0; line-height:1.5; }
-.pull-card .dup-note{ font-size:10px; color:#e8c77e; margin-top:8px; }
+.pull-card .type-tag{ font-size:9px; color:#8a82a0; margin-bottom:8px; }
+.pull-card .item-name{ font-size:14px; font-weight:700; margin-bottom:6px; color:#fff; }
+.pull-card .item-desc{ font-size:11px; color:#c5bdd6; line-height:1.5; }
+.pull-card .dup-note{ font-size:10px; color: var(--candle); margin-top:8px; }
 
-.msg-toast{ font-size:11px; color:#ff9aa8; text-align:center; min-height:14px; }
+.msg-toast{ font-size:11px; color: var(--blood); text-align:center; min-height:14px; }
 
-.section-label{ font-size:11px; color:#9d95a8; text-align:center; margin:0 0 10px; }
+.section-label{ font-size:11px; color: var(--cyan); text-align:center; margin:0 0 10px; letter-spacing:0.5px; }
 
 .item-grid{
   display:grid; grid-template-columns: repeat(auto-fill, minmax(130px,1fr));
@@ -267,29 +361,32 @@ button:disabled{ opacity:0.4; cursor:not-allowed; }
 }
 .item-card{
   border:2px solid var(--common);
-  border-radius:8px; padding:10px; text-align:center;
-  background:#171320; cursor:pointer; user-select:none;
+  border-radius:10px; padding:10px; text-align:center;
+  background:#150f20; cursor:pointer; user-select:none;
+  transition: transform 0.1s;
 }
+.item-card:active{ transform: scale(0.96); }
 .item-card.rare{ border-color: var(--rare); }
 .item-card.legendary{ border-color: var(--legendary); }
-.item-card.equipped{ background:#26202f; box-shadow: 0 0 0 2px var(--candle) inset; }
+.item-card.equipped{ background:#241a33; box-shadow: 0 0 0 2px var(--candle) inset, 0 0 14px rgba(255,210,63,0.3); }
 .item-card .icon{ width:36px; height:36px; border-radius:50%; margin:0 auto 8px; }
-.item-card .type-tag{ font-size:8.5px; color:#7a7488; margin-bottom:2px; }
-.item-card .item-name{ font-size:11px; font-weight:700; margin-bottom:4px; line-height:1.3; }
-.item-card .item-desc{ font-size:9.5px; color:#9d95a8; line-height:1.4; }
+.item-card .type-tag{ font-size:8.5px; color:#8a82a0; margin-bottom:2px; }
+.item-card .item-name{ font-size:11px; font-weight:700; margin-bottom:4px; line-height:1.3; color:#fff; }
+.item-card .item-desc{ font-size:9.5px; color:#a89fbc; line-height:1.4; }
 .item-card .equip-tag{ margin-top:6px; font-size:9px; color: var(--candle); }
 .empty-state{ font-size:12px; color:#736c80; text-align:center; padding: 30px 10px; grid-column:1/-1; }
 
 .slot-row{ display:flex; gap:10px; justify-content:center; margin-bottom:4px; flex-wrap:wrap; }
 .equip-slot{
-  width:70px; height:70px; border-radius:8px;
+  width:72px; height:72px; border-radius:10px;
   border:2px dashed #4a4457;
   display:flex; align-items:center; justify-content:center;
-  font-size:9px; color:#5a5468; text-align:center; padding:4px;
+  font-size:9px; color:#6a637a; text-align:center; padding:4px;
+  background: rgba(0,0,0,0.2);
 }
-.equip-slot.filled{ border-style:solid; border-color: var(--candle); color:var(--bone); font-size:9px; }
+.equip-slot.filled{ border-style:solid; border-color: var(--candle); color:#fff; font-size:9px; box-shadow: 0 0 12px rgba(255,210,63,0.35); }
 .equip-slot.weapon-slot{ border-color:#3a5a6a; }
-.equip-slot.weapon-slot.filled{ border-color:#a9d4f0; }
+.equip-slot.weapon-slot.filled{ border-color: var(--cyan); box-shadow: 0 0 12px rgba(46,230,214,0.4); }
 
 .footer-nav{ display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
 .disclaimer{ font-size:10px; color:#5a5468; text-align:center; }
@@ -348,32 +445,38 @@ button:disabled{ opacity:0.4; cursor:not-allowed; }
   </div>
 
   <div class="game-frame page" id="pageGame">
-    <canvas id="gameCanvas" width="800" height="520"></canvas>
-    <div class="hud">
-      <div id="hearts"></div>
-      <div class="hud-right">
-        <div id="stageLabel">스테이지 1</div>
-        <div id="roomLabel">방 0/5 정리됨</div>
-        <div id="runCoins">0</div>
-        <div id="weaponLabel">기본 눈물</div>
+    <div class="screen-area">
+      <canvas id="gameCanvas" width="800" height="450"></canvas>
+      <div class="scanlines"></div>
+      <div class="crt-vignette"></div>
+      <div class="hud">
+        <div id="hearts" class="hud-chip"></div>
+        <div class="hud-right">
+          <div id="stageLabel" class="hud-chip">스테이지 1</div>
+          <div id="roomLabel" class="hud-chip">방 0/5 정리됨</div>
+          <div id="runCoins" class="hud-chip">0</div>
+          <div id="weaponLabel" class="hud-chip">기본 눈물</div>
+        </div>
+      </div>
+
+      <div class="overlay" id="loseOverlay">
+        <h2>쓰러졌다...</h2>
+        <p>지하묘지의 어둠이 당신을 삼켰습니다.<br>모은 코인은 그대로 보관됩니다.</p>
+        <button id="loseHomeBtn">홈으로</button>
+      </div>
+
+      <div class="overlay" id="winOverlay">
+        <h2 class="win">스테이지 정복!</h2>
+        <p id="winText">보스를 물리치고 스테이지를 클리어했습니다.</p>
+        <button id="winNextBtn">다음 스테이지로</button>
+        <button class="secondary" id="winHomeBtn">홈으로</button>
       </div>
     </div>
 
-    <div class="overlay" id="loseOverlay">
-      <h2>쓰러졌다...</h2>
-      <p>지하묘지의 어둠이 당신을 삼켰습니다.<br>모은 코인은 그대로 보관됩니다.</p>
-      <button id="loseHomeBtn">홈으로</button>
+    <div class="control-bar" id="controlBar">
+      <div class="joystick" id="joyMove"><div class="knob"></div><div class="label">이동</div></div>
+      <div class="joystick" id="joyAim"><div class="knob"></div><div class="label">발사</div></div>
     </div>
-
-    <div class="overlay" id="winOverlay">
-      <h2 class="win">스테이지 정복!</h2>
-      <p id="winText">보스를 물리치고 스테이지를 클리어했습니다.</p>
-      <button id="winNextBtn">다음 스테이지로</button>
-      <button class="secondary" id="winHomeBtn">홈으로</button>
-    </div>
-
-    <div class="joystick" id="joyMove"><div class="knob"></div><div class="label">이동</div></div>
-    <div class="joystick" id="joyAim"><div class="knob"></div><div class="label">발사</div></div>
   </div>
 
 </div>
@@ -669,6 +772,9 @@ function goToPage(name){
     document.getElementById('gachaStage').querySelectorAll('.pull-card').forEach(function(c){ c.remove(); });
     document.getElementById('gachaMsg').textContent = '';
   }
+  if(typeof fitCanvas === 'function'){
+    requestAnimationFrame(function(){ fitCanvas(); });
+  }
 }
 
 document.getElementById('goGachaBtn').onclick = function(){ goToPage('gacha'); };
@@ -794,10 +900,10 @@ function pickBossKind(stage){
   return BOSS_KINDS[Math.floor(Math.random()*BOSS_KINDS.length)];
 }
 const BOSS_INFO = {
-  sentinel:   {name:'뼈 감시자',   color:'#7a2a3a', baseHp:40, dmgTouch:2, speed:1.3, r:34},
-  cleric:     {name:'유령 사제',   color:'#5a3a7a', baseHp:32, dmgTouch:1, speed:1.5, r:30},
-  maggot:     {name:'살찐 구더기', color:'#4a5a2a', baseHp:60, dmgTouch:2, speed:0.7, r:38},
-  wraith:     {name:'쌍둥이 망령', color:'#3a5a6a', baseHp:20, dmgTouch:2, speed:1.9, r:24}
+  sentinel:   {name:'뼈 감시자',   color:'#ff3868', baseHp:40, dmgTouch:2, speed:1.3, r:34},
+  cleric:     {name:'유령 사제',   color:'#b26bff', baseHp:32, dmgTouch:1, speed:1.5, r:30},
+  maggot:     {name:'살찐 구더기', color:'#6de24e', baseHp:60, dmgTouch:2, speed:0.7, r:38},
+  wraith:     {name:'쌍둥이 망령', color:'#2ee6d6', baseHp:20, dmgTouch:2, speed:1.9, r:24}
 };
 function makeBoss(kind, x, y){
   const info = BOSS_INFO[kind];
@@ -966,14 +1072,35 @@ document.addEventListener('pointermove', function(e){
   });
 });
 
+// Sizes the game screen so the whole app (header + screen + control bar)
+// fits inside the visible viewport with no scrolling, in both portrait
+// and landscape. Recomputed on load/resize/orientation change and every
+// time the game page becomes visible (control-bar height is only
+// measurable once its subtree is actually laid out, i.e. not display:none).
+const pageGameEl = document.getElementById('pageGame');
+const controlBarEl = document.getElementById('controlBar');
 function fitCanvas(){
-  if(window.CSS && CSS.supports && CSS.supports('aspect-ratio: 1 / 1')) return;
-  const w = canvas.parentElement.clientWidth;
-  canvas.style.width = w + 'px';
-  canvas.style.height = (w * H / W) + 'px';
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const h1El = document.querySelector('h1');
+  const subEl = document.querySelector('.subtitle');
+  const hintEl = document.getElementById('gameControlsHint');
+  const bodyStyle = getComputedStyle(document.body);
+  let chromeH = parseFloat(bodyStyle.paddingTop) + parseFloat(bodyStyle.paddingBottom);
+  if(h1El) chromeH += h1El.offsetHeight;
+  if(subEl) chromeH += subEl.offsetHeight + 14;
+  if(hintEl && getComputedStyle(hintEl).display !== 'none') chromeH += hintEl.offsetHeight + 14;
+  const barH = controlBarEl ? controlBarEl.offsetHeight : 90;
+  const availH = Math.max(160, vh - chromeH - barH - 16);
+  const availW = vw * 0.97;
+  let w = Math.min(availW, 800);
+  let h = w * 9/16;
+  if(h > availH){ h = availH; w = h * 16/9; }
+  if(pageGameEl) pageGameEl.style.width = w + 'px';
 }
 fitCanvas();
 window.addEventListener('resize', fitCanvas);
+window.addEventListener('orientationchange', function(){ setTimeout(fitCanvas, 150); });
 
 document.getElementById('loseHomeBtn').onclick = function(){ loseOverlay.classList.remove('show'); state='idle'; goToPage('home'); };
 document.getElementById('winHomeBtn').onclick = function(){ winOverlay.classList.remove('show'); state='idle'; goToPage('home'); };
@@ -1308,30 +1435,44 @@ function handleDoorTransition(){
 }
 
 function drawRoom(){
-  ctx.fillStyle = '#0d0b12';
+  ctx.fillStyle = '#08050f';
   ctx.fillRect(0,0,W,H);
-  ctx.fillStyle = '#171320';
+  ctx.fillStyle = '#150f20';
   ctx.fillRect(WALL,WALL,W-WALL*2,H-WALL*2);
-  ctx.strokeStyle = 'rgba(255,255,255,0.02)';
+  ctx.strokeStyle = 'rgba(46,230,214,0.05)';
   for(let gx=WALL; gx<W-WALL; gx+=40){ ctx.beginPath(); ctx.moveTo(gx,WALL); ctx.lineTo(gx,H-WALL); ctx.stroke(); }
   for(let gy=WALL; gy<H-WALL; gy+=40){ ctx.beginPath(); ctx.moveTo(WALL,gy); ctx.lineTo(W-WALL,gy); ctx.stroke(); }
-  ctx.fillStyle = '#2a2433';
+  ctx.fillStyle = '#2a1f3d';
   ctx.fillRect(0,0,W,WALL); ctx.fillRect(0,H-WALL,W,WALL); ctx.fillRect(0,0,WALL,H); ctx.fillRect(W-WALL,0,WALL,H);
+  ctx.strokeStyle = 'rgba(178,107,255,0.25)'; ctx.lineWidth = 1;
+  ctx.strokeRect(1,1,W-2,H-2);
 
   const avail = neighbors(curX,curY);
   const clear = isRoomClear();
   for(const n of avail){
-    ctx.fillStyle = clear ? '#0d0b12' : '#4a3a2a';
+    ctx.fillStyle = clear ? '#08050f' : '#3a1420';
     if(n.dir==='up') ctx.fillRect(W/2-30,0,60,WALL);
     if(n.dir==='down') ctx.fillRect(W/2-30,H-WALL,60,WALL);
     if(n.dir==='left') ctx.fillRect(0,H/2-30,WALL,60);
     if(n.dir==='right') ctx.fillRect(W-WALL,H/2-30,WALL,60);
-    if(!clear){
-      ctx.strokeStyle = '#b3273f'; ctx.lineWidth = 2;
+    if(clear){
+      ctx.save();
+      ctx.strokeStyle = '#2ee6d6'; ctx.lineWidth = 2;
+      ctx.shadowColor = '#2ee6d6'; ctx.shadowBlur = 10;
       if(n.dir==='up') ctx.strokeRect(W/2-30,2,60,WALL-2);
       if(n.dir==='down') ctx.strokeRect(W/2-30,H-WALL,60,WALL-2);
       if(n.dir==='left') ctx.strokeRect(2,H/2-30,WALL-2,60);
       if(n.dir==='right') ctx.strokeRect(W-WALL,H/2-30,WALL-2,60);
+      ctx.restore();
+    } else {
+      ctx.save();
+      ctx.strokeStyle = '#ff3868'; ctx.lineWidth = 2;
+      ctx.shadowColor = '#ff3868'; ctx.shadowBlur = 8;
+      if(n.dir==='up') ctx.strokeRect(W/2-30,2,60,WALL-2);
+      if(n.dir==='down') ctx.strokeRect(W/2-30,H-WALL,60,WALL-2);
+      if(n.dir==='left') ctx.strokeRect(2,H/2-30,WALL-2,60);
+      if(n.dir==='right') ctx.strokeRect(W-WALL,H/2-30,WALL-2,60);
+      ctx.restore();
     }
   }
 }
@@ -1340,8 +1481,11 @@ function drawPlayer(){
   const flash = player.invuln>0 && Math.floor(player.invuln/4)%2===0;
   ctx.save();
   ctx.globalAlpha = flash ? 0.4 : 1;
-  ctx.fillStyle = '#e8c77e';
+  ctx.shadowColor = '#ffd23f';
+  ctx.shadowBlur = 16;
+  ctx.fillStyle = '#ffd23f';
   ctx.beginPath(); ctx.ellipse(player.x, player.y, player.r, player.r*1.05, 0, 0, Math.PI*2); ctx.fill();
+  ctx.shadowBlur = 0;
   ctx.fillStyle = '#1a1420';
   const ex = player.facing.x*4, ey=player.facing.y*4;
   ctx.beginPath(); ctx.arc(player.x-5+ex, player.y-2+ey, 2.4,0,Math.PI*2); ctx.fill();
@@ -1352,33 +1496,43 @@ function drawPlayer(){
 function drawEnemy(en){
   if(en.hp<=0) return;
   ctx.save();
-  let color = '#8a2233';
-  if(en.type==='brute') color = '#3a4a2a';
-  if(en.type==='boss') color = BOSS_INFO[en.bossKind] ? BOSS_INFO[en.bossKind].color : '#7a2a3a';
+  let color = '#ff3868';
+  if(en.type==='brute') color = '#6de24e';
+  if(en.type==='boss') color = BOSS_INFO[en.bossKind] ? BOSS_INFO[en.bossKind].color : '#ff3868';
+  ctx.shadowColor = color;
+  ctx.shadowBlur = en.type==='boss' ? 18 : 10;
   ctx.fillStyle = en.hitFlash>0 ? '#ffffff' : color;
   ctx.beginPath(); ctx.arc(en.x, en.y, en.r, 0, Math.PI*2); ctx.fill();
+  ctx.shadowBlur = 0;
   ctx.fillStyle = '#1a1420';
   ctx.beginPath(); ctx.arc(en.x-en.r*0.3, en.y-en.r*0.2, en.r*0.15,0,Math.PI*2); ctx.fill();
   ctx.beginPath(); ctx.arc(en.x+en.r*0.3, en.y-en.r*0.2, en.r*0.15,0,Math.PI*2); ctx.fill();
   ctx.restore();
   if(en.type==='boss'){
-    const bw = 70;
-    ctx.fillStyle='#000'; ctx.fillRect(en.x-bw/2, en.y-en.r-16, bw, 6);
-    ctx.fillStyle='#b3273f'; ctx.fillRect(en.x-bw/2, en.y-en.r-16, bw*(en.hp/en.maxhp), 6);
+    const bw = 76;
+    ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(en.x-bw/2-2, en.y-en.r-18, bw+4, 9);
+    ctx.fillStyle='#ff3868'; ctx.fillRect(en.x-bw/2, en.y-en.r-16, bw*(en.hp/en.maxhp), 6);
+    ctx.strokeStyle='rgba(255,56,104,0.6)'; ctx.lineWidth=1; ctx.strokeRect(en.x-bw/2-2, en.y-en.r-18, bw+4, 9);
   }
 }
 
 function drawTears(){
-  ctx.fillStyle = '#cfe8f0';
+  ctx.save();
+  ctx.shadowColor = '#7dfcff'; ctx.shadowBlur = 8;
+  ctx.fillStyle = '#c8fdff';
   for(const tr of tears){ if(tr.dist>=99999) continue; ctx.beginPath(); ctx.arc(tr.x,tr.y,tr.r,0,Math.PI*2); ctx.fill(); }
-  ctx.fillStyle = '#8a2233';
+  ctx.restore();
+  ctx.save();
+  ctx.shadowColor = '#ff3868'; ctx.shadowBlur = 8;
+  ctx.fillStyle = '#ff3868';
   for(const p of eprojectiles){ ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill(); }
+  ctx.restore();
   if(laserActive && laserEnd){
     ctx.save();
-    ctx.strokeStyle = 'rgba(169,212,240,0.9)';
+    ctx.strokeStyle = 'rgba(46,230,214,0.95)';
     ctx.lineWidth = 5;
-    ctx.shadowColor = '#a9d4f0';
-    ctx.shadowBlur = 12;
+    ctx.shadowColor = '#2ee6d6';
+    ctx.shadowBlur = 18;
     ctx.beginPath(); ctx.moveTo(player.x,player.y); ctx.lineTo(laserEnd.x, laserEnd.y); ctx.stroke();
     ctx.restore();
   }
@@ -1389,9 +1543,11 @@ function drawCoins(){
     const yOff = Math.sin(c.bob)*4;
     ctx.save();
     ctx.translate(c.x, c.y+yOff);
-    ctx.fillStyle = c.big ? '#f5dca0' : '#e8c77e';
+    ctx.shadowColor = '#ffd23f'; ctx.shadowBlur = c.big ? 16 : 8;
+    ctx.fillStyle = c.big ? '#ffe98a' : '#ffd23f';
     ctx.beginPath(); ctx.arc(0,0,c.r,0,Math.PI*2); ctx.fill();
-    ctx.strokeStyle = '#8a6a2a'; ctx.lineWidth = 1.5;
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = '#b8860b'; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.arc(0,0,c.r*0.6,0,Math.PI*2); ctx.stroke();
     ctx.restore();
   }
