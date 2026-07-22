@@ -127,6 +127,7 @@ h1{
 .heart.empty{ background: #3a2f38; filter:none; }
 
 .hud-right{ text-align:right; display:flex; flex-direction:column; gap:4px; align-items:flex-end; }
+#stageLabel{ color:#e89a4e; text-shadow: 0 0 6px rgba(0,0,0,0.8); }
 #roomLabel{ color: var(--candle); text-shadow: 0 0 6px rgba(0,0,0,0.8); }
 #runCoins{ color: #f0d98c; text-shadow: 0 0 6px rgba(0,0,0,0.8); }
 #runCoins::before{ content: "◆ "; }
@@ -219,6 +220,20 @@ button:disabled{ opacity:0.4; cursor:not-allowed; }
 .equip-slot-mini.filled{ border-style:solid; color:#1a1420; }
 .equip-slot-mini.weapon{ border-color:#a9d4f0; }
 
+.stage-row{ display:flex; gap:8px; justify-content:center; flex-wrap:wrap; }
+.stage-btn{
+  font-family:'Press Start 2P', monospace;
+  font-size:11px;
+  width:44px; height:44px;
+  border-radius:6px;
+  border:2px solid var(--stone-light);
+  background:#171320;
+  color:#9d95a8;
+  cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+}
+.stage-btn.selected{ border-color:var(--candle); color:var(--candle); box-shadow:0 0 10px rgba(232,199,126,0.4); }
+
 .gacha-stage{
   display:flex; flex-direction:column; align-items:center; gap:14px;
   min-height:220px; justify-content:center;
@@ -290,6 +305,10 @@ button:disabled{ opacity:0.4; cursor:not-allowed; }
   <div class="page active" id="pageHome">
     <div class="currency-bar" id="homeCoinDisplay">0</div>
     <div class="page-box">
+      <p class="section-label">스테이지 선택</p>
+      <div class="stage-row" id="stageRow"></div>
+    </div>
+    <div class="page-box">
       <div class="home-buttons">
         <button id="goGachaBtn">뽑기 하러 가기</button>
         <button class="secondary" id="goInventoryBtn">인벤토리 (아이템 장착)</button>
@@ -314,10 +333,10 @@ button:disabled{ opacity:0.4; cursor:not-allowed; }
 
   <div class="page" id="pageInventory">
     <div class="page-box">
-      <p class="section-label">무기 슬롯 (최대 3개) — 여러 개를 함께 장착하면 효과가 합쳐집니다</p>
+      <p class="section-label">무기 슬롯 (최대 3개) — 여러 개를 함께 장착하면 효과가 합쳐지고, 같은 걸 중첩하면 더 강해집니다</p>
       <div class="slot-row" id="weaponSlotRow"></div>
       <p class="section-label" id="weaponComboLabel" style="margin-top:8px; color:#a9d4f0;">현재 조합: 기본 눈물</p>
-      <p class="section-label" style="margin-top:16px;">보조 아이템 슬롯 (최대 2개)</p>
+      <p class="section-label" style="margin-top:16px;">보조 아이템 슬롯 (최대 2개, 중첩 가능)</p>
       <div class="slot-row" id="passiveSlotRow"></div>
     </div>
     <div class="page-box">
@@ -333,6 +352,7 @@ button:disabled{ opacity:0.4; cursor:not-allowed; }
     <div class="hud">
       <div id="hearts"></div>
       <div class="hud-right">
+        <div id="stageLabel">스테이지 1</div>
         <div id="roomLabel">방 0/5 정리됨</div>
         <div id="runCoins">0</div>
         <div id="weaponLabel">기본 눈물</div>
@@ -346,9 +366,10 @@ button:disabled{ opacity:0.4; cursor:not-allowed; }
     </div>
 
     <div class="overlay" id="winOverlay">
-      <h2 class="win">묘지 정복!</h2>
-      <p>보스를 물리치고 지하묘지를 탈출했습니다.</p>
-      <button id="winHomeBtn">홈으로</button>
+      <h2 class="win">스테이지 정복!</h2>
+      <p id="winText">보스를 물리치고 스테이지를 클리어했습니다.</p>
+      <button id="winNextBtn">다음 스테이지로</button>
+      <button class="secondary" id="winHomeBtn">홈으로</button>
     </div>
 
     <div class="joystick" id="joyMove"><div class="knob"></div><div class="label">이동</div></div>
@@ -376,15 +397,15 @@ window.addEventListener('error', function(e){
 (function(){
 
 // =========================================================
-//  META PROGRESSION: currency, item pool, gacha, inventory
+//  META PROGRESSION: currency, item pool, gacha, inventory, stages
 // =========================================================
 let currency = 0;
-let inventory = {}; // itemId -> owned count (duplicates now stack, not refunded)
-let equippedWeapons = [];   // up to 3 weapon-mod item ids — effects combine
+let inventory = {};
+let equippedWeapons = [];
 let equippedPassives = [];
+let currentStage = 1;
+let maxStageUnlocked = 1;
 
-// Display name per individual modifier (used to compose the combined
-// weapon name shown in the HUD, e.g. "관통+유도+삼중").
 const MOD_NAME = {
   triple: '삼중', shotgun: '산탄', pierce: '관통',
   homing: '유도', boomerang: '되돌이', explosive: '폭발', laser: '광선'
@@ -403,33 +424,53 @@ function composeWeaponName(mods){
 }
 
 const ITEM_POOL = [
-  // Each weapon item just adds ONE modifier tag to player.weaponMods.
-  // Equipping several at once (up to 3 slots) combines their effects —
-  // e.g. pierce + homing + explosive together makes every tear pierce,
-  // curve toward enemies, AND explode on each hit. This lets players
-  // freely build any combination instead of picking one fixed weapon.
-  {id:'triple_shot',   type:'weapon', mod:'triple',    name:'세 갈래 눈물',       rarity:'common',    desc:'세 방향으로 동시에 발사 (다른 무기 효과와 조합 가능)',      apply:p=>{ (p.weaponMods=p.weaponMods||[]).push('triple'); }},
-  {id:'shotgun_tear',  type:'weapon', mod:'shotgun',   name:'흩뿌리는 눈물',      rarity:'common',    desc:'넓게 퍼지는 5발 산탄 (개별 위력 감소, 조합 가능)',         apply:p=>{ (p.weaponMods=p.weaponMods||[]).push('shotgun'); }},
-  {id:'piercing_tear', type:'weapon', mod:'pierce',    name:'꿰뚫는 눈물',        rarity:'rare',      desc:'적을 관통 (조합 가능)',                             apply:p=>{ (p.weaponMods=p.weaponMods||[]).push('pierce'); }},
-  {id:'homing_tear',   type:'weapon', mod:'homing',    name:'추적하는 눈물',      rarity:'rare',      desc:'가까운 적을 향해 휘어짐 (조합 가능)',                   apply:p=>{ (p.weaponMods=p.weaponMods||[]).push('homing'); }},
-  {id:'boomerang_tear',type:'weapon', mod:'boomerang', name:'되돌아오는 눈물',    rarity:'rare',      desc:'날아갔다가 돌아옴 (조합 가능)',                        apply:p=>{ (p.weaponMods=p.weaponMods||[]).push('boomerang'); }},
-  {id:'explosive_tear',type:'weapon', mod:'explosive', name:'폭발하는 눈물',      rarity:'legendary', desc:'적중 시 주변에 폭발 피해 (조합 가능)',                   apply:p=>{ (p.weaponMods=p.weaponMods||[]).push('explosive'); }},
-  {id:'laser_beam',    type:'weapon', mod:'laser',     name:'끊이지 않는 광선',   rarity:'legendary', desc:'조준 방향으로 지속 피해 (단독 사용 시 가장 강력)',          apply:p=>{ (p.weaponMods=p.weaponMods||[]).push('laser'); }},
+  // ---- weapon-mod items: equip up to 3, effects combine & stack ----
+  {id:'triple_shot',   type:'weapon', mod:'triple',    name:'세 갈래 눈물',       rarity:'common',    desc:'세 방향으로 동시 발사 (중첩 시 각도 확장)',        apply:p=>{ (p.weaponMods=p.weaponMods||[]).push('triple'); }},
+  {id:'shotgun_tear',  type:'weapon', mod:'shotgun',   name:'흩뿌리는 눈물',      rarity:'common',    desc:'넓게 퍼지는 산탄 (중첩 시 탄수 증가)',            apply:p=>{ (p.weaponMods=p.weaponMods||[]).push('shotgun'); }},
+  {id:'piercing_tear', type:'weapon', mod:'pierce',    name:'꿰뚫는 눈물',        rarity:'rare',      desc:'적을 관통 (중첩 시 판정·데미지 증가)',             apply:p=>{ (p.weaponMods=p.weaponMods||[]).push('pierce'); }},
+  {id:'homing_tear',   type:'weapon', mod:'homing',    name:'추적하는 눈물',      rarity:'rare',      desc:'가까운 적을 향해 휘어짐 (중첩 시 더 강하게)',        apply:p=>{ (p.weaponMods=p.weaponMods||[]).push('homing'); }},
+  {id:'boomerang_tear',type:'weapon', mod:'boomerang', name:'되돌아오는 눈물',    rarity:'rare',      desc:'날아갔다가 돌아옴 (중첩 시 더 멀리·빠르게)',         apply:p=>{ (p.weaponMods=p.weaponMods||[]).push('boomerang'); }},
+  {id:'explosive_tear',type:'weapon', mod:'explosive', name:'폭발하는 눈물',      rarity:'legendary', desc:'적중 시 폭발 (중첩 시 범위·피해 증가)',            apply:p=>{ (p.weaponMods=p.weaponMods||[]).push('explosive'); }},
+  {id:'laser_beam',    type:'weapon', mod:'laser',     name:'끊이지 않는 광선',   rarity:'legendary', desc:'지속 피해 광선 (중첩 시 초당 피해 증가)',           apply:p=>{ (p.weaponMods=p.weaponMods||[]).push('laser'); }},
 
-  {id:'tear_dmg1',    type:'passive', name:'금이 간 눈물방울',        rarity:'common',    desc:'공격력 +0.6',                          apply:p=>{ p.dmg += 0.6; }},
-  {id:'quick_boots',  type:'passive', name:'닳아빠진 묘지기 장화',     rarity:'common',    desc:'이동속도 +0.5',                        apply:p=>{ p.speed += 0.5; }},
-  {id:'rusty_bell',   type:'passive', name:'녹슨 경종 조각',          rarity:'common',    desc:'발사 속도 증가',                        apply:p=>{ p.tearRate = Math.max(90, p.tearRate-30); }},
-  {id:'bone_charm',   type:'passive', name:'이 빠진 뼈 부적',         rarity:'common',    desc:'최대 체력 +1칸',                        apply:p=>{ p.maxHearts += 2; p.hearts += 2; }},
-  {id:'toad_hide',    type:'passive', name:'낡은 두꺼비 가죽',        rarity:'common',    desc:'피격 시 받는 피해 소폭 감소',              apply:p=>{ p.dmgReduction = (p.dmgReduction||0) + 1; }},
-  {id:'rat_blessing', type:'passive', name:'쥐의 축복',              rarity:'common',    desc:'코인 획득량 +20%',                       apply:p=>{ p.coinMult = (p.coinMult||1) * 1.2; }},
-  {id:'ember_core',   type:'passive', name:'타오르는 잉걸불 심장',     rarity:'rare',      desc:'공격력 +1.4',                          apply:p=>{ p.dmg += 1.4; }},
-  {id:'phantom_veil', type:'passive', name:'너덜너덜한 유령의 장막',   rarity:'rare',      desc:'이동속도 +1.0, 무적시간 소폭 증가',         apply:p=>{ p.speed += 1.0; p.invulnBonus = (p.invulnBonus||0) + 12; }},
-  {id:'greedy_skull', type:'passive', name:'탐욕스러운 해골',         rarity:'rare',      desc:'코인 획득량 +50%',                       apply:p=>{ p.coinMult = (p.coinMult||1) * 1.5; }},
-  {id:'wide_tear',    type:'passive', name:'부풀어 오른 눈물',        rarity:'rare',      desc:'눈물 사거리 증가',                       apply:p=>{ p.tearRange += 120; }},
-  {id:'second_heart', type:'passive', name:'두 번째 심장',           rarity:'rare',      desc:'최대 체력 +2칸',                        apply:p=>{ p.maxHearts += 4; p.hearts += 4; }},
-  {id:'crown_of_ash', type:'passive', name:'잿더미의 왕관',          rarity:'legendary', desc:'공격력·이동속도·최대 체력 모두 상승',        apply:p=>{ p.dmg += 0.8; p.speed += 0.5; p.maxHearts += 2; p.hearts += 2; }},
-  {id:'reaper_contract',type:'passive', name:'저승사자의 낡은 계약서', rarity:'legendary', desc:'공격력 대폭 상승 (대신 최대 체력 -1칸)',     apply:p=>{ p.dmg += 2.5; p.maxHearts = Math.max(2, p.maxHearts-2); p.hearts = Math.min(p.hearts, p.maxHearts); }},
-  {id:'sigil_gluttony',type:'passive', name:'폭식의 인장',           rarity:'legendary', desc:'공격력·속도·체력·코인 획득량 전부 상승',      apply:p=>{ p.dmg += 1; p.speed += 0.6; p.maxHearts += 2; p.hearts += 2; p.coinMult = (p.coinMult||1) * 1.3; }}
+  // ---- passive items: many small/medium/large tiers per stat, plus multi-stat combos ----
+  {id:'tear_dmg_s',   type:'passive', name:'금이 간 눈물방울',      rarity:'common',    desc:'공격력 +0.5',                     apply:p=>{ p.dmg += 0.5; }},
+  {id:'tear_dmg_m',   type:'passive', name:'응고된 핏방울',         rarity:'common',    desc:'공격력 +0.9',                     apply:p=>{ p.dmg += 0.9; }},
+  {id:'tear_dmg_l',   type:'passive', name:'타오르는 잉걸불 심장',   rarity:'rare',      desc:'공격력 +1.4',                     apply:p=>{ p.dmg += 1.4; }},
+  {id:'tear_dmg_xl',  type:'passive', name:'검은 화염의 정수',      rarity:'rare',      desc:'공격력 +2.0',                     apply:p=>{ p.dmg += 2.0; }},
+  {id:'tear_dmg_xxl', type:'passive', name:'심판자의 파편',         rarity:'legendary', desc:'공격력 +3.0',                     apply:p=>{ p.dmg += 3.0; }},
+
+  {id:'speed_s',  type:'passive', name:'닳아빠진 묘지기 장화',   rarity:'common',    desc:'이동속도 +0.4',                   apply:p=>{ p.speed += 0.4; }},
+  {id:'speed_m',  type:'passive', name:'가벼운 그림자 망토',     rarity:'common',    desc:'이동속도 +0.7',                   apply:p=>{ p.speed += 0.7; }},
+  {id:'speed_l',  type:'passive', name:'질풍의 발목지환',        rarity:'rare',      desc:'이동속도 +1.4',                   apply:p=>{ p.speed += 1.4; }},
+  {id:'speed_xl', type:'passive', name:'바람의 정령 조각',       rarity:'legendary', desc:'이동속도 +2.0',                   apply:p=>{ p.speed += 2.0; }},
+
+  {id:'rate_s',  type:'passive', name:'녹슨 경종 조각',        rarity:'common',    desc:'발사 속도 소폭 증가',              apply:p=>{ p.tearRate = Math.max(90, p.tearRate-20); }},
+  {id:'rate_m',  type:'passive', name:'금 간 태엽 장치',        rarity:'common',    desc:'발사 속도 증가',                  apply:p=>{ p.tearRate = Math.max(90, p.tearRate-35); }},
+  {id:'rate_l',  type:'passive', name:'광란의 심장박동',        rarity:'rare',      desc:'발사 속도 대폭 증가',              apply:p=>{ p.tearRate = Math.max(90, p.tearRate-55); }},
+  {id:'rate_xl', type:'passive', name:'영원히 도는 시계',       rarity:'legendary', desc:'발사 속도 극도로 증가',            apply:p=>{ p.tearRate = Math.max(90, p.tearRate-80); }},
+
+  {id:'heart_s', type:'passive', name:'이 빠진 뼈 부적',       rarity:'common',    desc:'최대 체력 +1칸',                  apply:p=>{ p.maxHearts += 2; p.hearts += 2; }},
+  {id:'heart_m', type:'passive', name:'두 번째 심장',          rarity:'rare',      desc:'최대 체력 +2칸',                  apply:p=>{ p.maxHearts += 4; p.hearts += 4; }},
+  {id:'heart_l', type:'passive', name:'거대한 갈비뼈 우리',     rarity:'legendary', desc:'최대 체력 +3칸',                  apply:p=>{ p.maxHearts += 6; p.hearts += 6; }},
+
+  {id:'coin_s', type:'passive', name:'쥐의 축복',            rarity:'common',    desc:'코인 획득량 +15%',                apply:p=>{ p.coinMult = (p.coinMult||1) * 1.15; }},
+  {id:'coin_m', type:'passive', name:'탐욕스러운 해골',        rarity:'rare',      desc:'코인 획득량 +50%',                apply:p=>{ p.coinMult = (p.coinMult||1) * 1.5; }},
+  {id:'coin_l', type:'passive', name:'황금 손버릇',           rarity:'legendary', desc:'코인 획득량 +100%',               apply:p=>{ p.coinMult = (p.coinMult||1) * 2.0; }},
+
+  {id:'armor_s', type:'passive', name:'낡은 두꺼비 가죽',       rarity:'common',    desc:'피격 시 받는 피해 소폭 감소',       apply:p=>{ p.dmgReduction = (p.dmgReduction||0) + 1; }},
+  {id:'armor_m', type:'passive', name:'굳은살 박인 피부',       rarity:'rare',      desc:'피격 시 받는 피해 감소',           apply:p=>{ p.dmgReduction = (p.dmgReduction||0) + 2; }},
+
+  {id:'range_s', type:'passive', name:'아득한 시야',          rarity:'common',    desc:'눈물 사거리 +60',                 apply:p=>{ p.tearRange += 60; }},
+  {id:'range_m', type:'passive', name:'부풀어 오른 눈물',       rarity:'rare',      desc:'눈물 사거리 +120',                apply:p=>{ p.tearRange += 120; }},
+
+  {id:'iframe_s', type:'passive', name:'그림자 발걸음',         rarity:'rare',      desc:'피격 후 무적시간 증가',            apply:p=>{ p.invulnBonus = (p.invulnBonus||0) + 15; }},
+
+  {id:'combo_balance',  type:'passive', name:'균형의 반지',        rarity:'rare',      desc:'공격력 +0.5, 이동속도 +0.5, 발사속도 소폭 증가',   apply:p=>{ p.dmg+=0.5; p.speed+=0.5; p.tearRate=Math.max(90,p.tearRate-15); }},
+  {id:'combo_miser',    type:'passive', name:'수전노의 지갑',       rarity:'rare',      desc:'코인 획득량 +30% (대신 최대 체력 -1칸)',          apply:p=>{ p.coinMult=(p.coinMult||1)*1.3; p.maxHearts=Math.max(2,p.maxHearts-2); p.hearts=Math.min(p.hearts,p.maxHearts); }},
+  {id:'crown_of_ash',   type:'passive', name:'잿더미의 왕관',       rarity:'legendary', desc:'공격력·이동속도·최대 체력 모두 상승',              apply:p=>{ p.dmg+=0.8; p.speed+=0.5; p.maxHearts+=2; p.hearts+=2; }},
+  {id:'reaper_contract',type:'passive', name:'저승사자의 낡은 계약서', rarity:'legendary', desc:'공격력 대폭 상승 (대신 최대 체력 -1칸)',           apply:p=>{ p.dmg+=2.5; p.maxHearts=Math.max(2,p.maxHearts-2); p.hearts=Math.min(p.hearts,p.maxHearts); }},
+  {id:'sigil_gluttony', type:'passive', name:'폭식의 인장',        rarity:'legendary', desc:'공격력·속도·체력·코인 획득량 전부 상승',           apply:p=>{ p.dmg+=1; p.speed+=0.6; p.maxHearts+=2; p.hearts+=2; p.coinMult=(p.coinMult||1)*1.3; }}
 ];
 const TYPE_LABEL = {weapon:'무기', passive:'보조 아이템'};
 function itemById(id){ return ITEM_POOL.find(i=>i.id===id); }
@@ -482,8 +523,21 @@ function renderCurrency(){
   if(runCoinsEl) runCoinsEl.textContent = currency;
 }
 
+function renderStageRow(){
+  const row = document.getElementById('stageRow');
+  row.innerHTML = '';
+  for(let s=1; s<=maxStageUnlocked; s++){
+    const btn = document.createElement('div');
+    btn.className = 'stage-btn' + (s===currentStage ? ' selected' : '');
+    btn.textContent = s;
+    btn.onclick = function(){ currentStage = s; renderStageRow(); };
+    row.appendChild(btn);
+  }
+}
+
 function renderHome(){
   renderCurrency();
+  renderStageRow();
   const box = document.getElementById('homeEquipSummary');
   box.innerHTML = '';
   const slots = [equippedWeapons[0], equippedWeapons[1], equippedWeapons[2], equippedPassives[0], equippedPassives[1]];
@@ -509,11 +563,6 @@ function equippedCount(id){
   const list = it.type==='weapon' ? equippedWeapons : equippedPassives;
   return list.filter(function(x){ return x===id; }).length;
 }
-
-// Clicking an item card in the grid equips one MORE copy of it (if you
-// own enough copies and a slot is free). Clicking a filled slot instead
-// removes that one instance. This is how duplicate copies of the same
-// module get stacked to intensify its effect.
 function equipOneMore(id){
   const it = itemById(id);
   if(equippedCount(id) >= ownedCount(id)){ flashEquipMsg('더 이상 보유한 수량이 없습니다'); return; }
@@ -527,11 +576,8 @@ function equipOneMore(id){
   renderInventory();
 }
 function unequipSlot(type, index){
-  if(type === 'weapon'){
-    equippedWeapons.splice(index, 1);
-  } else {
-    equippedPassives.splice(index, 1);
-  }
+  if(type === 'weapon'){ equippedWeapons.splice(index, 1); }
+  else { equippedPassives.splice(index, 1); }
   renderInventory();
 }
 function flashEquipMsg(text){
@@ -642,18 +688,15 @@ const WALL = 26;
 
 const loseOverlay = document.getElementById('loseOverlay');
 const winOverlay = document.getElementById('winOverlay');
+const winText = document.getElementById('winText');
 const heartsEl = document.getElementById('hearts');
 const roomLabelEl = document.getElementById('roomLabel');
 const weaponLabelEl = document.getElementById('weaponLabel');
+const stageLabelEl = document.getElementById('stageLabel');
 
-const ROOMS = {
-  '0,0': {type:'start'},
-  '1,0': {type:'normal'},
-  '-1,0': {type:'normal'},
-  '0,-1': {type:'treasure'},
-  '2,0': {type:'normal'},
-  '2,-1': {type:'boss'}
-};
+let ROOMS = {};
+let totalClearable = 0;
+
 function key(x,y){ return x+','+y; }
 function neighbors(x,y){
   return [
@@ -661,7 +704,55 @@ function neighbors(x,y){
     {dx:-1,dy:0,dir:'left'}, {dx:1,dy:0,dir:'right'}
   ].filter(function(n){ return !!ROOMS[key(x+n.dx,y+n.dy)]; });
 }
-let totalClearable = Object.values(ROOMS).filter(function(r){ return r.type!=='start'; }).length;
+
+// ---------- Procedural dungeon layout (regenerated every run) ----------
+function bfsDistances(cells, startKey){
+  const dist = {}; dist[startKey] = 0;
+  const queue = [startKey];
+  const dirs = [{dx:0,dy:-1},{dx:0,dy:1},{dx:-1,dy:0},{dx:1,dy:0}];
+  while(queue.length){
+    const ck = queue.shift();
+    const parts = ck.split(',');
+    const cx = parseInt(parts[0],10), cy = parseInt(parts[1],10);
+    for(const d of dirs){
+      const nk = (cx+d.dx)+','+(cy+d.dy);
+      if(cells[nk] && !(nk in dist)){ dist[nk] = dist[ck]+1; queue.push(nk); }
+    }
+  }
+  return dist;
+}
+function generateDungeon(stage){
+  const roomCount = Math.min(4 + stage, 11);
+  const cells = {};
+  const order = [];
+  cells['0,0'] = true; order.push({x:0,y:0});
+  const dirs = [{dx:0,dy:-1},{dx:0,dy:1},{dx:-1,dy:0},{dx:1,dy:0}];
+  let guard = 0;
+  while(order.length < roomCount && guard < 400){
+    guard++;
+    const base = order[Math.floor(Math.random()*order.length)];
+    const d = dirs[Math.floor(Math.random()*dirs.length)];
+    const nx = base.x+d.dx, ny = base.y+d.dy;
+    const k = nx+','+ny;
+    if(!cells[k]){ cells[k]=true; order.push({x:nx,y:ny}); }
+  }
+  const rooms = {};
+  order.forEach(function(c){ rooms[c.x+','+c.y] = {type:'normal'}; });
+  rooms['0,0'].type = 'start';
+  const dist = bfsDistances(cells, '0,0');
+  let bossKey = '0,0', bossDist = -1;
+  Object.keys(dist).forEach(function(k){ if(dist[k] > bossDist){ bossDist = dist[k]; bossKey = k; } });
+  if(rooms[bossKey]) rooms[bossKey].type = 'boss';
+  const treasureCandidates = order.filter(function(c){
+    const k = c.x+','+c.y;
+    return rooms[k] && rooms[k].type === 'normal';
+  });
+  if(treasureCandidates.length > 0){
+    const t = treasureCandidates[Math.floor(Math.random()*treasureCandidates.length)];
+    rooms[t.x+','+t.y].type = 'treasure';
+  }
+  return rooms;
+}
 
 let keys = {};
 let state = 'idle';
@@ -670,6 +761,7 @@ let roomsCleared = 0;
 let player, tears, enemies, eprojectiles, coins, particles;
 let visited = {};
 let laserActive = false, laserEnd = null;
+let stageDifficulty = 1;
 
 function freshPlayer(){
   return {
@@ -686,10 +778,36 @@ function applyEquippedItems(p){
   for(const id of equippedPassives){ const it = itemById(id); if(it) it.apply(p); }
 }
 
+// Only melee enemies ('chaser'/'brute') spawn in normal rooms — regular
+// monsters never fire projectiles. Bosses are the only ranged threat.
 function makeEnemy(type, x, y){
-  if(type==='chaser') return {type:type, x:x, y:y, r:15, hp:3, maxhp:3, speed:1.6, dmgTouch:1, hitFlash:0, coinDropped:false};
-  if(type==='brute')  return {type:type, x:x, y:y, r:19, hp:6, maxhp:6, speed:1.0, dmgTouch:2, hitFlash:0, coinDropped:false};
-  if(type==='boss')   return {type:type, x:x, y:y, r:34, hp:40, maxhp:40, speed:1.3, dmgTouch:2, hitFlash:0, cd:70, coinDropped:false};
+  const m = stageDifficulty;
+  if(type==='chaser') return {type:type, x:x, y:y, r:15, hp:Math.round(3*m), maxhp:Math.round(3*m), speed:Math.min(2.6, 1.6*(1+(m-1)*0.15)), dmgTouch:1, hitFlash:0, coinDropped:false};
+  if(type==='brute')  return {type:type, x:x, y:y, r:19, hp:Math.round(6*m), maxhp:Math.round(6*m), speed:Math.min(1.8, 1.0*(1+(m-1)*0.15)), dmgTouch:2, hitFlash:0, coinDropped:false};
+}
+
+const BOSS_KINDS = ['sentinel','cleric','maggot','twin_wraith'];
+function pickBossKind(stage){
+  if(stage < 2) return 'sentinel';
+  if(stage < 3) return Math.random()<0.5 ? 'sentinel' : 'cleric';
+  if(stage < 4) return BOSS_KINDS[Math.floor(Math.random()*3)];
+  return BOSS_KINDS[Math.floor(Math.random()*BOSS_KINDS.length)];
+}
+const BOSS_INFO = {
+  sentinel:   {name:'뼈 감시자',   color:'#7a2a3a', baseHp:40, dmgTouch:2, speed:1.3, r:34},
+  cleric:     {name:'유령 사제',   color:'#5a3a7a', baseHp:32, dmgTouch:1, speed:1.5, r:30},
+  maggot:     {name:'살찐 구더기', color:'#4a5a2a', baseHp:60, dmgTouch:2, speed:0.7, r:38},
+  wraith:     {name:'쌍둥이 망령', color:'#3a5a6a', baseHp:20, dmgTouch:2, speed:1.9, r:24}
+};
+function makeBoss(kind, x, y){
+  const info = BOSS_INFO[kind];
+  const m = stageDifficulty;
+  const hp = Math.round(info.baseHp * (1 + (m-1)*1.1));
+  return {
+    type:'boss', bossKind:kind, x:x, y:y, r:info.r, hp:hp, maxhp:hp,
+    speed:info.speed, dmgTouch:info.dmgTouch, hitFlash:0, cd:60, coinDropped:false,
+    spawnCd: kind==='maggot' ? 150 : undefined
+  };
 }
 
 function spawnCoins(en){
@@ -714,7 +832,7 @@ function populateRoom(x,y){
   coins = [];
   if(visited[rk]) return;
   if(info.type === 'normal'){
-    const n = 2 + Math.floor(Math.random()*2);
+    const n = Math.min(6, 2 + Math.floor(Math.random()*2) + Math.floor((currentStage-1)/2));
     for(let i=0;i<n;i++){
       const type = Math.random()<0.7 ? 'chaser' : 'brute';
       enemies.push(makeEnemy(type, 150+Math.random()*(W-300), 150+Math.random()*(H-300)));
@@ -722,13 +840,22 @@ function populateRoom(x,y){
   } else if(info.type === 'treasure'){
     coins.push({x:W/2, y:H/2, r:14, value: 15+Math.floor(Math.random()*11), bob:0, big:true});
   } else if(info.type === 'boss'){
-    enemies.push(makeEnemy('boss', W/2, H/2 - 60));
+    const kind = pickBossKind(currentStage);
+    if(kind === 'twin_wraith'){
+      enemies.push(makeBoss('wraith', W/2-70, H/2-60));
+      enemies.push(makeBoss('wraith', W/2+70, H/2-60));
+    } else {
+      enemies.push(makeBoss(kind, W/2, H/2-60));
+    }
   }
 }
 
 function isRoomClear(){ return enemies.filter(function(e){ return e.hp>0; }).length === 0; }
 
 function resetGame(){
+  ROOMS = generateDungeon(currentStage);
+  totalClearable = Object.values(ROOMS).filter(function(r){ return r.type!=='start'; }).length;
+  stageDifficulty = 1 + (currentStage-1)*0.28;
   curX = 0; curY = 0;
   roomsCleared = 0;
   visited = {};
@@ -746,6 +873,7 @@ function startDungeonRun(){
   loseOverlay.classList.remove('show');
   winOverlay.classList.remove('show');
   weaponLabelEl.textContent = composeWeaponName(player.weaponMods);
+  stageLabelEl.textContent = '스테이지 ' + currentStage;
 }
 
 window.addEventListener('keydown', function(e){
@@ -849,6 +977,11 @@ window.addEventListener('resize', fitCanvas);
 
 document.getElementById('loseHomeBtn').onclick = function(){ loseOverlay.classList.remove('show'); state='idle'; goToPage('home'); };
 document.getElementById('winHomeBtn').onclick = function(){ winOverlay.classList.remove('show'); state='idle'; goToPage('home'); };
+document.getElementById('winNextBtn').onclick = function(){
+  winOverlay.classList.remove('show');
+  currentStage = Math.min(currentStage+1, maxStageUnlocked);
+  startDungeonRun();
+};
 
 function makeTear(angle, overrides){
   const base = {
@@ -858,9 +991,6 @@ function makeTear(angle, overrides){
   };
   return Object.assign(base, overrides||{});
 }
-// Level = how many copies of that modifier are equipped at once. Equipping
-// the same weapon module 2-3 times in the 3 weapon slots stacks its level,
-// making that trait progressively stronger (see per-mod comments below).
 function modLevel(mod){
   return (player.weaponMods||[]).filter(function(m){ return m===mod; }).length;
 }
@@ -873,7 +1003,6 @@ function fireTears(){
   const boomerangLv = modLevel('boomerang');
   const explosiveLv = modLevel('explosive');
 
-  // spread modifiers: each extra level adds another pair of wider angles
   let offsets = [0];
   if(tripleLv>=1) offsets = offsets.concat([-0.28, 0.28]);
   if(tripleLv>=2) offsets = offsets.concat([-0.5, 0.5]);
@@ -883,13 +1012,12 @@ function fireTears(){
   if(shotgunLv>=3) offsets = offsets.concat([-0.64, 0.64]);
   offsets = Array.from(new Set(offsets.map(o=>Math.round(o*1000)))).map(o=>o/1000).sort(function(a,b){ return a-b; });
 
-  // per-tear flags + intensity, applied to every tear fired this shot
   const dmgMult = shotgunLv>0 ? 0.6 : 1;
   let r = 6;
   if(shotgunLv>0) r = 5;
-  if(pierceLv>0) r += pierceLv; // each pierce level makes the tear a little chunkier (easier to catch more enemies)
+  if(pierceLv>0) r += pierceLv;
   const overrides = {
-    dmg: player.dmg*dmgMult + pierceLv*0.3, // each pierce level also adds flat damage
+    dmg: player.dmg*dmgMult + pierceLv*0.3,
     r: r,
     pierce: pierceLv>0, pierceLv: pierceLv,
     homing: homingLv>0, homingLv: homingLv,
@@ -918,7 +1046,7 @@ function fireLaserBeam(){
   const x2 = player.x + Math.cos(ang)*player.tearRange;
   const y2 = player.y + Math.sin(ang)*player.tearRange;
   laserEnd = {x:x2, y:y2};
-  const perFrameDmg = player.dmg*0.14*(1 + 0.5*(lv-1)); // each extra laser level adds +50% beam DPS
+  const perFrameDmg = player.dmg*0.14*(1 + 0.5*(lv-1));
   for(const en of enemies){
     if(en.hp<=0) continue;
     if(distToSegment(en.x,en.y, player.x,player.y, x2,y2) < en.r+4){
@@ -974,8 +1102,8 @@ function update(dt, t){
     if(tr.dist >= 99999) continue;
     if(tr.homing){
       const homLv = tr.homingLv || 1;
-      const detectR = 220 + 50*homLv;   // more levels = spots enemies from further away
-      const turnRate = 0.08 + 0.05*homLv; // more levels = curves harder
+      const detectR = 220 + 50*homLv;
+      const turnRate = 0.08 + 0.05*homLv;
       let nearest=null, nd=99999;
       for(const en of enemies){ if(en.hp<=0) continue; const dd=dist(en,tr); if(dd<nd){ nd=dd; nearest=en; } }
       if(nearest && nd < detectR){
@@ -992,8 +1120,8 @@ function update(dt, t){
     }
     if(tr.boomerang){
       const boomLv = tr.boomerangLv || 1;
-      const outFrac = 0.5 + 0.08*(boomLv-1);       // more levels = flies out further before turning back
-      const returnSpeedMult = 1 + 0.15*(boomLv-1); // more levels = returns faster
+      const outFrac = 0.5 + 0.08*(boomLv-1);
+      const returnSpeedMult = 1 + 0.15*(boomLv-1);
       if(tr.phase==='out'){
         if(tr.dist > player.tearRange*outFrac) tr.phase = 'back';
       } else {
@@ -1014,21 +1142,57 @@ function update(dt, t){
   for(const en of enemies){
     if(en.hp<=0) continue;
     if(en.hitFlash>0) en.hitFlash--;
-    if(en.type==='chaser' || en.type==='brute' || en.type==='boss'){
+
+    if(en.type==='chaser' || en.type==='brute'){
       const ang = Math.atan2(player.y-en.y, player.x-en.x);
       en.x += Math.cos(ang)*en.speed;
       en.y += Math.sin(ang)*en.speed;
-    }
-    if(en.type==='boss'){
-      en.cd--;
-      if(en.cd<=0){
-        en.cd = 55;
-        for(let a=0;a<8;a++){
-          const ang = (Math.PI*2/8)*a;
-          eprojectiles.push({x:en.x,y:en.y,vx:Math.cos(ang)*3, vy:Math.sin(ang)*3, r:7});
+    } else if(en.type==='boss'){
+      if(en.bossKind==='sentinel'){
+        const ang = Math.atan2(player.y-en.y, player.x-en.x);
+        en.x += Math.cos(ang)*en.speed; en.y += Math.sin(ang)*en.speed;
+        en.cd--;
+        if(en.cd<=0){
+          en.cd = 55;
+          for(let a=0;a<8;a++){
+            const bang = (Math.PI*2/8)*a;
+            eprojectiles.push({x:en.x,y:en.y,vx:Math.cos(bang)*3, vy:Math.sin(bang)*3, r:7});
+          }
+        }
+      } else if(en.bossKind==='cleric'){
+        const d = dist(en,player);
+        const ang = Math.atan2(player.y-en.y, player.x-en.x);
+        if(d < 200){ en.x -= Math.cos(ang)*en.speed; en.y -= Math.sin(ang)*en.speed; }
+        else if(d > 320){ en.x += Math.cos(ang)*en.speed; en.y += Math.sin(ang)*en.speed; }
+        en.cd--;
+        if(en.cd<=0){
+          en.cd = 70;
+          [-0.18,0,0.18].forEach(function(off){
+            eprojectiles.push({x:en.x,y:en.y,vx:Math.cos(ang+off)*3.6, vy:Math.sin(ang+off)*3.6, r:7});
+          });
+        }
+      } else if(en.bossKind==='maggot'){
+        const ang = Math.atan2(player.y-en.y, player.x-en.x);
+        en.x += Math.cos(ang)*en.speed; en.y += Math.sin(ang)*en.speed;
+        en.spawnCd--;
+        if(en.spawnCd<=0){
+          en.spawnCd = 150;
+          const adds = enemies.filter(function(e){ return e.type==='chaser' && e.hp>0; }).length;
+          if(adds < 3){
+            enemies.push(makeEnemy('chaser', en.x+(Math.random()*60-30), en.y+(Math.random()*60-30)));
+          }
+        }
+      } else if(en.bossKind==='wraith'){
+        const ang = Math.atan2(player.y-en.y, player.x-en.x);
+        en.x += Math.cos(ang)*en.speed; en.y += Math.sin(ang)*en.speed;
+        en.cd--;
+        if(en.cd<=0){
+          en.cd = 65;
+          eprojectiles.push({x:en.x,y:en.y,vx:Math.cos(ang)*3.8, vy:Math.sin(ang)*3.8, r:7});
         }
       }
     }
+
     en.x = Math.max(WALL+en.r, Math.min(W-WALL-en.r, en.x));
     en.y = Math.max(WALL+en.r, Math.min(H-WALL-en.r, en.y));
 
@@ -1044,8 +1208,8 @@ function update(dt, t){
         spawnParticles(tr.x,tr.y,'#b3273f');
         if(tr.explosive){
           const expLv = tr.explosiveLv || 1;
-          const radius = 55 + 20*expLv;      // more levels = bigger blast
-          const splashMult = 0.45 + 0.15*expLv; // more levels = harder splash hit
+          const radius = 55 + 20*expLv;
+          const splashMult = 0.45 + 0.15*expLv;
           for(const other of enemies){
             if(other===en || other.hp<=0) continue;
             if(dist(other,tr) < radius){ other.hp -= tr.dmg*splashMult; other.hitFlash = 8; }
@@ -1090,6 +1254,12 @@ function update(dt, t){
 
   if(ROOMS[rk].type==='boss' && enemies.length>0 && isRoomClear() && state==='playing'){
     state = 'won';
+    if(currentStage === maxStageUnlocked){
+      maxStageUnlocked++;
+      winText.textContent = '스테이지 ' + currentStage + ' 클리어! 다음 스테이지가 열렸습니다.';
+    } else {
+      winText.textContent = '스테이지 ' + currentStage + '를 다시 클리어했습니다.';
+    }
     winOverlay.classList.add('show');
   }
   if(player.hearts<=0 && state==='playing'){
@@ -1122,9 +1292,6 @@ function handleDoorTransition(){
   for(const n of avail){
     if(!clear) continue;
     let crossed = false, newX=curX, newY=curY, entryX=player.x, entryY=player.y;
-    // door gaps are 60px wide, centered on the wall (see drawRoom) — only
-    // trigger a room change when the player is actually within that gap,
-    // not anywhere along the solid wall.
     const inDoorX = player.x > W/2-30 && player.x < W/2+30;
     const inDoorY = player.y > H/2-30 && player.y < H/2+30;
     if(n.dir==='up' && player.y < WALL+player.r+2 && inDoorX){ crossed=true; newY=curY-1; entryY = H-WALL-player.r-8; }
@@ -1185,16 +1352,19 @@ function drawPlayer(){
 function drawEnemy(en){
   if(en.hp<=0) return;
   ctx.save();
-  ctx.fillStyle = en.hitFlash>0 ? '#ffffff' : (en.type==='boss' ? '#7a2a3a' : en.type==='brute' ? '#3a4a2a' : '#8a2233');
+  let color = '#8a2233';
+  if(en.type==='brute') color = '#3a4a2a';
+  if(en.type==='boss') color = BOSS_INFO[en.bossKind] ? BOSS_INFO[en.bossKind].color : '#7a2a3a';
+  ctx.fillStyle = en.hitFlash>0 ? '#ffffff' : color;
   ctx.beginPath(); ctx.arc(en.x, en.y, en.r, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle = '#1a1420';
   ctx.beginPath(); ctx.arc(en.x-en.r*0.3, en.y-en.r*0.2, en.r*0.15,0,Math.PI*2); ctx.fill();
   ctx.beginPath(); ctx.arc(en.x+en.r*0.3, en.y-en.r*0.2, en.r*0.15,0,Math.PI*2); ctx.fill();
   ctx.restore();
   if(en.type==='boss'){
-    const bw = 200;
-    ctx.fillStyle='#000'; ctx.fillRect(W/2-bw/2, 44, bw, 8);
-    ctx.fillStyle='#b3273f'; ctx.fillRect(W/2-bw/2, 44, bw*(en.hp/en.maxhp), 8);
+    const bw = 70;
+    ctx.fillStyle='#000'; ctx.fillRect(en.x-bw/2, en.y-en.r-16, bw, 6);
+    ctx.fillStyle='#b3273f'; ctx.fillRect(en.x-bw/2, en.y-en.r-16, bw*(en.hp/en.maxhp), 6);
   }
 }
 
@@ -1273,6 +1443,8 @@ function loop(t){
 }
 requestAnimationFrame(loop);
 
+ROOMS = generateDungeon(1);
+totalClearable = Object.values(ROOMS).filter(function(r){ return r.type!=='start'; }).length;
 resetGame();
 document.getElementById('gameControlsHint').style.display = 'none';
 renderHome();
