@@ -1,0 +1,1283 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>지하묘지 탐험가 (Crypt Crawler)</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Nanum+Gothic:wght@400;700&display=swap');
+
+:root{
+  --bg: #0d0b12;
+  --stone: #1c1824;
+  --stone-light: #2a2433;
+  --blood: #b3273f;
+  --candle: #e8c77e;
+  --moss: #5a7a4f;
+  --bone: #d8cfc0;
+  --common: #9a94a6;
+  --rare: #4a9dd9;
+  --legendary: #e8b23e;
+}
+
+*{ box-sizing: border-box; }
+
+body{
+  margin:0;
+  min-height:100vh;
+  background: radial-gradient(circle at 50% 20%, #1a1522 0%, var(--bg) 70%);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  font-family: 'Nanum Gothic', sans-serif;
+  color: var(--bone);
+  padding: 16px;
+}
+
+h1{
+  font-family: 'Press Start 2P', monospace;
+  font-size: 16px;
+  color: var(--candle);
+  letter-spacing: 2px;
+  text-shadow: 0 0 12px rgba(232,199,126,0.5);
+  margin: 0 0 4px 0;
+  text-align:center;
+}
+
+.subtitle{
+  font-size: 12px;
+  color: #8a8296;
+  margin-bottom: 14px;
+  letter-spacing: 1px;
+  text-align:center;
+}
+
+#app{ width: min(800px, 96vw); }
+
+.game-frame{
+  position: relative;
+  border: 3px solid var(--stone-light);
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px #000, 0 20px 60px rgba(0,0,0,0.6), 0 0 40px rgba(179,39,63,0.08) inset;
+  background: var(--stone);
+  width: 100%;
+  touch-action: none;
+}
+
+#gameCanvas{
+  display:block;
+  background: var(--bg);
+  image-rendering: pixelated;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 800 / 520;
+  touch-action: none;
+}
+
+.joystick{
+  position:absolute;
+  bottom: 18px;
+  width: 108px; height: 108px;
+  border-radius: 50%;
+  background: rgba(232,199,126,0.06);
+  border: 2px solid rgba(232,199,126,0.35);
+  touch-action: none;
+  z-index: 5;
+}
+#joyMove{ left: 18px; }
+#joyAim{ right: 18px; }
+.joystick .knob{
+  position:absolute;
+  left:50%; top:50%;
+  width: 46px; height:46px;
+  margin-left:-23px; margin-top:-23px;
+  border-radius:50%;
+  background: rgba(232,199,126,0.55);
+  border: 2px solid var(--candle);
+  pointer-events:none;
+}
+.joystick .label{
+  position:absolute;
+  bottom:-20px; left:0; right:0;
+  text-align:center;
+  font-family:'Press Start 2P', monospace;
+  font-size:8px;
+  color:#8a8296;
+}
+
+.hud{
+  position:absolute;
+  top:10px; left:10px; right:10px;
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  pointer-events:none;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+}
+
+#hearts{ display:flex; gap:4px; }
+.heart{
+  width:16px; height:16px;
+  background: var(--blood);
+  clip-path: polygon(50% 15%, 61% 5%, 75% 5%, 88% 15%, 88% 30%, 50% 65%, 12% 30%, 12% 15%, 25% 5%, 39% 5%);
+  filter: drop-shadow(0 0 3px rgba(179,39,63,0.8));
+}
+.heart.half{ opacity:0.5; }
+.heart.empty{ background: #3a2f38; filter:none; }
+
+.hud-right{ text-align:right; display:flex; flex-direction:column; gap:4px; align-items:flex-end; }
+#roomLabel{ color: var(--candle); text-shadow: 0 0 6px rgba(0,0,0,0.8); }
+#runCoins{ color: #f0d98c; text-shadow: 0 0 6px rgba(0,0,0,0.8); }
+#runCoins::before{ content: "◆ "; }
+#weaponLabel{ color:#a9d4f0; text-shadow: 0 0 6px rgba(0,0,0,0.8); font-size:8px; }
+
+.overlay{
+  position:absolute; inset:0;
+  z-index: 20;
+  display:none;
+  align-items:center; justify-content:center;
+  flex-direction:column;
+  background: rgba(10,8,14,0.9);
+  text-align:center;
+  gap: 14px;
+  padding: 20px;
+}
+.overlay.show{ display:flex; }
+.overlay h2{
+  font-family:'Press Start 2P', monospace;
+  font-size: 20px;
+  color: var(--blood);
+  text-shadow: 0 0 16px rgba(179,39,63,0.6);
+}
+.overlay h2.win{ color: var(--candle); text-shadow: 0 0 16px rgba(232,199,126,0.6); }
+.overlay p{ font-size:13px; color:#b5adc0; max-width:320px; line-height:1.6; }
+
+button{
+  font-family:'Press Start 2P', monospace;
+  font-size: 11px;
+  background: var(--blood);
+  color: var(--bone);
+  border:none;
+  padding: 12px 20px;
+  border-radius:4px;
+  cursor:pointer;
+  letter-spacing:1px;
+  box-shadow: 0 4px 0 #7a1a29;
+  transition: transform 0.08s;
+}
+button:active{ transform: translateY(4px); box-shadow:none; }
+button.secondary{ background: var(--stone-light); box-shadow: 0 4px 0 #14111a; }
+button:disabled{ opacity:0.4; cursor:not-allowed; }
+
+.controls{
+  margin-top: 14px;
+  font-size: 11px;
+  color: #74697f;
+  display:flex;
+  gap: 22px;
+  justify-content:center;
+  flex-wrap:wrap;
+}
+.controls span b{ color: var(--bone); }
+
+.page{ display:none; }
+.page.active{ display:flex; flex-direction:column; gap:16px; }
+
+.currency-bar{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  font-family:'Press Start 2P', monospace;
+  font-size:13px;
+  color:#f0d98c;
+  background: var(--stone);
+  border:2px solid var(--stone-light);
+  border-radius:6px;
+  padding:12px;
+}
+.currency-bar::before{ content:"◆"; color:#f0d98c; }
+
+.page-box{
+  background: var(--stone);
+  border:2px solid var(--stone-light);
+  border-radius:8px;
+  padding:20px;
+}
+
+.home-buttons{ display:flex; flex-direction:column; gap:10px; }
+.home-buttons button{ width:100%; padding:16px; font-size:12px; }
+
+.equip-summary{ display:flex; gap:8px; justify-content:center; margin-top:10px; flex-wrap:wrap; }
+.equip-slot-mini{
+  width:44px; height:44px; border-radius:6px;
+  border:2px dashed #4a4457;
+  display:flex; align-items:center; justify-content:center;
+  font-size:7px; color:#5a5468; text-align:center; padding:2px;
+}
+.equip-slot-mini.filled{ border-style:solid; color:#1a1420; }
+.equip-slot-mini.weapon{ border-color:#a9d4f0; }
+
+.gacha-stage{
+  display:flex; flex-direction:column; align-items:center; gap:14px;
+  min-height:220px; justify-content:center;
+}
+.pull-card{
+  width:190px; padding:18px 14px; border-radius:10px;
+  text-align:center; border:3px solid var(--common);
+  background: linear-gradient(160deg, #221d2c, #17131e);
+  animation: reveal 0.35s ease;
+}
+.pull-card.rare{ border-color: var(--rare); box-shadow:0 0 24px rgba(74,157,217,0.35); }
+.pull-card.legendary{ border-color: var(--legendary); box-shadow:0 0 28px rgba(232,178,62,0.45); }
+@keyframes reveal{ from{ transform:scale(0.7); opacity:0; } to{ transform:scale(1); opacity:1; } }
+.pull-card .icon{ width:56px; height:56px; margin:0 auto 10px; border-radius:50%; }
+.pull-card .rarity-tag{ font-family:'Press Start 2P', monospace; font-size:8px; margin-bottom:4px; letter-spacing:1px; }
+.pull-card.common .rarity-tag{ color: var(--common); }
+.pull-card.rare .rarity-tag{ color: var(--rare); }
+.pull-card.legendary .rarity-tag{ color: var(--legendary); }
+.pull-card .type-tag{ font-size:9px; color:#7a7488; margin-bottom:8px; }
+.pull-card .item-name{ font-size:14px; font-weight:700; margin-bottom:6px; }
+.pull-card .item-desc{ font-size:11px; color:#b5adc0; line-height:1.5; }
+.pull-card .dup-note{ font-size:10px; color:#e8c77e; margin-top:8px; }
+
+.msg-toast{ font-size:11px; color:#ff9aa8; text-align:center; min-height:14px; }
+
+.section-label{ font-size:11px; color:#9d95a8; text-align:center; margin:0 0 10px; }
+
+.item-grid{
+  display:grid; grid-template-columns: repeat(auto-fill, minmax(130px,1fr));
+  gap:10px;
+}
+.item-card{
+  border:2px solid var(--common);
+  border-radius:8px; padding:10px; text-align:center;
+  background:#171320; cursor:pointer; user-select:none;
+}
+.item-card.rare{ border-color: var(--rare); }
+.item-card.legendary{ border-color: var(--legendary); }
+.item-card.equipped{ background:#26202f; box-shadow: 0 0 0 2px var(--candle) inset; }
+.item-card .icon{ width:36px; height:36px; border-radius:50%; margin:0 auto 8px; }
+.item-card .type-tag{ font-size:8.5px; color:#7a7488; margin-bottom:2px; }
+.item-card .item-name{ font-size:11px; font-weight:700; margin-bottom:4px; line-height:1.3; }
+.item-card .item-desc{ font-size:9.5px; color:#9d95a8; line-height:1.4; }
+.item-card .equip-tag{ margin-top:6px; font-size:9px; color: var(--candle); }
+.empty-state{ font-size:12px; color:#736c80; text-align:center; padding: 30px 10px; grid-column:1/-1; }
+
+.slot-row{ display:flex; gap:10px; justify-content:center; margin-bottom:4px; flex-wrap:wrap; }
+.equip-slot{
+  width:70px; height:70px; border-radius:8px;
+  border:2px dashed #4a4457;
+  display:flex; align-items:center; justify-content:center;
+  font-size:9px; color:#5a5468; text-align:center; padding:4px;
+}
+.equip-slot.filled{ border-style:solid; border-color: var(--candle); color:var(--bone); font-size:9px; }
+.equip-slot.weapon-slot{ border-color:#3a5a6a; }
+.equip-slot.weapon-slot.filled{ border-color:#a9d4f0; }
+
+.footer-nav{ display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
+.disclaimer{ font-size:10px; color:#5a5468; text-align:center; }
+</style>
+</head>
+<body>
+
+<h1>지하묘지 탐험가</h1>
+<div class="subtitle">코인을 모아 뽑기로 아이템을 얻고, 장착한 뒤 던전에 들어가세요</div>
+
+<div id="app">
+
+  <div class="page active" id="pageHome">
+    <div class="currency-bar" id="homeCoinDisplay">0</div>
+    <div class="page-box">
+      <div class="home-buttons">
+        <button id="goGachaBtn">뽑기 하러 가기</button>
+        <button class="secondary" id="goInventoryBtn">인벤토리 (아이템 장착)</button>
+        <button id="enterDungeonBtn">던전 입장</button>
+      </div>
+      <div class="equip-summary" id="homeEquipSummary"></div>
+    </div>
+    <div class="disclaimer">* 아이템 이름은 전부 임시 명칭입니다.</div>
+  </div>
+
+  <div class="page" id="pageGacha">
+    <div class="currency-bar" id="gachaCoinDisplay">0</div>
+    <div class="page-box gacha-stage" id="gachaStage">
+      <p style="font-size:12px;color:#9d95a8;">1회 뽑기 비용: <b style="color:#f0d98c;">15 코인</b></p>
+      <button id="pullBtn">뽑기 (15 코인)</button>
+      <div class="msg-toast" id="gachaMsg"></div>
+    </div>
+    <div class="footer-nav">
+      <button class="secondary" id="gachaHomeBtn">홈으로</button>
+    </div>
+  </div>
+
+  <div class="page" id="pageInventory">
+    <div class="page-box">
+      <p class="section-label">무기 슬롯 (최대 3개) — 여러 개를 함께 장착하면 효과가 합쳐집니다</p>
+      <div class="slot-row" id="weaponSlotRow"></div>
+      <p class="section-label" id="weaponComboLabel" style="margin-top:8px; color:#a9d4f0;">현재 조합: 기본 눈물</p>
+      <p class="section-label" style="margin-top:16px;">보조 아이템 슬롯 (최대 2개)</p>
+      <div class="slot-row" id="passiveSlotRow"></div>
+    </div>
+    <div class="page-box">
+      <div class="item-grid" id="inventoryGrid"></div>
+    </div>
+    <div class="footer-nav">
+      <button class="secondary" id="invHomeBtn">홈으로</button>
+    </div>
+  </div>
+
+  <div class="game-frame page" id="pageGame">
+    <canvas id="gameCanvas" width="800" height="520"></canvas>
+    <div class="hud">
+      <div id="hearts"></div>
+      <div class="hud-right">
+        <div id="roomLabel">방 0/5 정리됨</div>
+        <div id="runCoins">0</div>
+        <div id="weaponLabel">기본 눈물</div>
+      </div>
+    </div>
+
+    <div class="overlay" id="loseOverlay">
+      <h2>쓰러졌다...</h2>
+      <p>지하묘지의 어둠이 당신을 삼켰습니다.<br>모은 코인은 그대로 보관됩니다.</p>
+      <button id="loseHomeBtn">홈으로</button>
+    </div>
+
+    <div class="overlay" id="winOverlay">
+      <h2 class="win">묘지 정복!</h2>
+      <p>보스를 물리치고 지하묘지를 탈출했습니다.</p>
+      <button id="winHomeBtn">홈으로</button>
+    </div>
+
+    <div class="joystick" id="joyMove"><div class="knob"></div><div class="label">이동</div></div>
+    <div class="joystick" id="joyAim"><div class="knob"></div><div class="label">발사</div></div>
+  </div>
+
+</div>
+
+<div class="controls" id="gameControlsHint">
+  <span><b>WASD</b> / 왼쪽 조이스틱 이동</span>
+  <span><b>방향키</b> / 오른쪽 조이스틱 발사</span>
+  <span><b>문</b> 몬스터 처치 후 개방</span>
+</div>
+<div id="errBox" style="display:none; margin-top:10px; max-width:800px; background:#3a1520; color:#ffb3c0; font-size:12px; padding:10px 14px; border-radius:6px; white-space:pre-wrap; text-align:left;"></div>
+
+<script>
+window.addEventListener('error', function(e){
+  const box = document.getElementById('errBox');
+  if(box){
+    box.style.display = 'block';
+    box.textContent = '오류 발생: ' + e.message + ' (줄 ' + e.lineno + ')';
+  }
+});
+
+(function(){
+
+// =========================================================
+//  META PROGRESSION: currency, item pool, gacha, inventory
+// =========================================================
+let currency = 0;
+let inventory = {}; // itemId -> owned count (duplicates now stack, not refunded)
+let equippedWeapons = [];   // up to 3 weapon-mod item ids — effects combine
+let equippedPassives = [];
+
+// Display name per individual modifier (used to compose the combined
+// weapon name shown in the HUD, e.g. "관통+유도+삼중").
+const MOD_NAME = {
+  triple: '삼중', shotgun: '산탄', pierce: '관통',
+  homing: '유도', boomerang: '되돌이', explosive: '폭발', laser: '광선'
+};
+function composeWeaponName(mods){
+  if(!mods || mods.length===0) return '기본 눈물';
+  const counts = {};
+  mods.forEach(function(m){ counts[m] = (counts[m]||0) + 1; });
+  if(counts.laser){
+    return '끊이지 않는 광선' + (counts.laser>1 ? ' Lv.'+counts.laser : '') +
+      (Object.keys(counts).length>1 ? ' (다른 효과는 광선에는 적용되지 않음)' : '');
+  }
+  return Object.keys(counts).map(function(m){
+    return MOD_NAME[m] + (counts[m]>1 ? ' Lv.'+counts[m] : '');
+  }).join('+') + ' 눈물';
+}
+
+const ITEM_POOL = [
+  // Each weapon item just adds ONE modifier tag to player.weaponMods.
+  // Equipping several at once (up to 3 slots) combines their effects —
+  // e.g. pierce + homing + explosive together makes every tear pierce,
+  // curve toward enemies, AND explode on each hit. This lets players
+  // freely build any combination instead of picking one fixed weapon.
+  {id:'triple_shot',   type:'weapon', mod:'triple',    name:'세 갈래 눈물',       rarity:'common',    desc:'세 방향으로 동시에 발사 (다른 무기 효과와 조합 가능)',      apply:p=>{ (p.weaponMods=p.weaponMods||[]).push('triple'); }},
+  {id:'shotgun_tear',  type:'weapon', mod:'shotgun',   name:'흩뿌리는 눈물',      rarity:'common',    desc:'넓게 퍼지는 5발 산탄 (개별 위력 감소, 조합 가능)',         apply:p=>{ (p.weaponMods=p.weaponMods||[]).push('shotgun'); }},
+  {id:'piercing_tear', type:'weapon', mod:'pierce',    name:'꿰뚫는 눈물',        rarity:'rare',      desc:'적을 관통 (조합 가능)',                             apply:p=>{ (p.weaponMods=p.weaponMods||[]).push('pierce'); }},
+  {id:'homing_tear',   type:'weapon', mod:'homing',    name:'추적하는 눈물',      rarity:'rare',      desc:'가까운 적을 향해 휘어짐 (조합 가능)',                   apply:p=>{ (p.weaponMods=p.weaponMods||[]).push('homing'); }},
+  {id:'boomerang_tear',type:'weapon', mod:'boomerang', name:'되돌아오는 눈물',    rarity:'rare',      desc:'날아갔다가 돌아옴 (조합 가능)',                        apply:p=>{ (p.weaponMods=p.weaponMods||[]).push('boomerang'); }},
+  {id:'explosive_tear',type:'weapon', mod:'explosive', name:'폭발하는 눈물',      rarity:'legendary', desc:'적중 시 주변에 폭발 피해 (조합 가능)',                   apply:p=>{ (p.weaponMods=p.weaponMods||[]).push('explosive'); }},
+  {id:'laser_beam',    type:'weapon', mod:'laser',     name:'끊이지 않는 광선',   rarity:'legendary', desc:'조준 방향으로 지속 피해 (단독 사용 시 가장 강력)',          apply:p=>{ (p.weaponMods=p.weaponMods||[]).push('laser'); }},
+
+  {id:'tear_dmg1',    type:'passive', name:'금이 간 눈물방울',        rarity:'common',    desc:'공격력 +0.6',                          apply:p=>{ p.dmg += 0.6; }},
+  {id:'quick_boots',  type:'passive', name:'닳아빠진 묘지기 장화',     rarity:'common',    desc:'이동속도 +0.5',                        apply:p=>{ p.speed += 0.5; }},
+  {id:'rusty_bell',   type:'passive', name:'녹슨 경종 조각',          rarity:'common',    desc:'발사 속도 증가',                        apply:p=>{ p.tearRate = Math.max(90, p.tearRate-30); }},
+  {id:'bone_charm',   type:'passive', name:'이 빠진 뼈 부적',         rarity:'common',    desc:'최대 체력 +1칸',                        apply:p=>{ p.maxHearts += 2; p.hearts += 2; }},
+  {id:'toad_hide',    type:'passive', name:'낡은 두꺼비 가죽',        rarity:'common',    desc:'피격 시 받는 피해 소폭 감소',              apply:p=>{ p.dmgReduction = (p.dmgReduction||0) + 1; }},
+  {id:'rat_blessing', type:'passive', name:'쥐의 축복',              rarity:'common',    desc:'코인 획득량 +20%',                       apply:p=>{ p.coinMult = (p.coinMult||1) * 1.2; }},
+  {id:'ember_core',   type:'passive', name:'타오르는 잉걸불 심장',     rarity:'rare',      desc:'공격력 +1.4',                          apply:p=>{ p.dmg += 1.4; }},
+  {id:'phantom_veil', type:'passive', name:'너덜너덜한 유령의 장막',   rarity:'rare',      desc:'이동속도 +1.0, 무적시간 소폭 증가',         apply:p=>{ p.speed += 1.0; p.invulnBonus = (p.invulnBonus||0) + 12; }},
+  {id:'greedy_skull', type:'passive', name:'탐욕스러운 해골',         rarity:'rare',      desc:'코인 획득량 +50%',                       apply:p=>{ p.coinMult = (p.coinMult||1) * 1.5; }},
+  {id:'wide_tear',    type:'passive', name:'부풀어 오른 눈물',        rarity:'rare',      desc:'눈물 사거리 증가',                       apply:p=>{ p.tearRange += 120; }},
+  {id:'second_heart', type:'passive', name:'두 번째 심장',           rarity:'rare',      desc:'최대 체력 +2칸',                        apply:p=>{ p.maxHearts += 4; p.hearts += 4; }},
+  {id:'crown_of_ash', type:'passive', name:'잿더미의 왕관',          rarity:'legendary', desc:'공격력·이동속도·최대 체력 모두 상승',        apply:p=>{ p.dmg += 0.8; p.speed += 0.5; p.maxHearts += 2; p.hearts += 2; }},
+  {id:'reaper_contract',type:'passive', name:'저승사자의 낡은 계약서', rarity:'legendary', desc:'공격력 대폭 상승 (대신 최대 체력 -1칸)',     apply:p=>{ p.dmg += 2.5; p.maxHearts = Math.max(2, p.maxHearts-2); p.hearts = Math.min(p.hearts, p.maxHearts); }},
+  {id:'sigil_gluttony',type:'passive', name:'폭식의 인장',           rarity:'legendary', desc:'공격력·속도·체력·코인 획득량 전부 상승',      apply:p=>{ p.dmg += 1; p.speed += 0.6; p.maxHearts += 2; p.hearts += 2; p.coinMult = (p.coinMult||1) * 1.3; }}
+];
+const TYPE_LABEL = {weapon:'무기', passive:'보조 아이템'};
+function itemById(id){ return ITEM_POOL.find(i=>i.id===id); }
+
+const PULL_COST = 15;
+const RARITY_LABEL = {common:'일반', rare:'희귀', legendary:'전설'};
+
+function rollRarity(){
+  const r = Math.random();
+  if(r < 0.08) return 'legendary';
+  if(r < 0.42) return 'rare';
+  return 'common';
+}
+function doGachaPull(){
+  const msg = document.getElementById('gachaMsg');
+  if(currency < PULL_COST){ msg.textContent = '코인이 부족합니다.'; return; }
+  currency -= PULL_COST;
+  const rarity = rollRarity();
+  const pool = ITEM_POOL.filter(i=>i.rarity===rarity);
+  const item = pool[Math.floor(Math.random()*pool.length)];
+  const wasOwned = !!inventory[item.id];
+  inventory[item.id] = (inventory[item.id]||0) + 1;
+  renderCurrency();
+  const stage = document.getElementById('gachaStage');
+  stage.querySelectorAll('.pull-card').forEach(c=>c.remove());
+  const card = document.createElement('div');
+  card.className = 'pull-card ' + item.rarity;
+  card.innerHTML = '<div class="icon" style="background:' + rarityColor(item.rarity) + '"></div>' +
+    '<div class="rarity-tag">' + RARITY_LABEL[item.rarity] + '</div>' +
+    '<div class="type-tag">' + TYPE_LABEL[item.type] + '</div>' +
+    '<div class="item-name">' + item.name + '</div>' +
+    '<div class="item-desc">' + item.desc + '</div>' +
+    '<div class="dup-note">보유 수량: ' + inventory[item.id] + '개' + (wasOwned ? ' (중첩 장착 시 효과 강화)' : '') + '</div>';
+  stage.insertBefore(card, msg);
+  msg.textContent = '';
+  document.getElementById('pullBtn').disabled = currency < PULL_COST;
+}
+function rarityColor(r){
+  if(r==='legendary') return 'radial-gradient(circle at 35% 30%, #f5dca0, #b8860b)';
+  if(r==='rare') return 'radial-gradient(circle at 35% 30%, #a9d4f0, #2f6f9e)';
+  return 'radial-gradient(circle at 35% 30%, #cfc9d8, #6a6478)';
+}
+
+function renderCurrency(){
+  document.getElementById('homeCoinDisplay').textContent = currency + ' 코인';
+  document.getElementById('gachaCoinDisplay').textContent = currency + ' 코인';
+  const pullBtn = document.getElementById('pullBtn');
+  if(pullBtn) pullBtn.disabled = currency < PULL_COST;
+  const runCoinsEl = document.getElementById('runCoins');
+  if(runCoinsEl) runCoinsEl.textContent = currency;
+}
+
+function renderHome(){
+  renderCurrency();
+  const box = document.getElementById('homeEquipSummary');
+  box.innerHTML = '';
+  const slots = [equippedWeapons[0], equippedWeapons[1], equippedWeapons[2], equippedPassives[0], equippedPassives[1]];
+  slots.forEach(function(id, i){
+    const isWeaponSlot = i < 3;
+    const div = document.createElement('div');
+    div.className = 'equip-slot-mini' + (id?' filled':'') + (isWeaponSlot?' weapon':'');
+    if(id){
+      const it = itemById(id);
+      div.style.background = rarityColor(it.rarity);
+      div.title = it.name;
+    } else {
+      div.textContent = isWeaponSlot ? '무기 없음' : '빈 슬롯';
+    }
+    box.appendChild(div);
+  });
+}
+
+let equipMsgTimer = null;
+function ownedCount(id){ return inventory[id] || 0; }
+function equippedCount(id){
+  const it = itemById(id);
+  const list = it.type==='weapon' ? equippedWeapons : equippedPassives;
+  return list.filter(function(x){ return x===id; }).length;
+}
+
+// Clicking an item card in the grid equips one MORE copy of it (if you
+// own enough copies and a slot is free). Clicking a filled slot instead
+// removes that one instance. This is how duplicate copies of the same
+// module get stacked to intensify its effect.
+function equipOneMore(id){
+  const it = itemById(id);
+  if(equippedCount(id) >= ownedCount(id)){ flashEquipMsg('더 이상 보유한 수량이 없습니다'); return; }
+  if(it.type === 'weapon'){
+    if(equippedWeapons.length >= 3){ flashEquipMsg('무기 슬롯이 가득 찼습니다 (최대 3개)'); return; }
+    equippedWeapons.push(id);
+  } else {
+    if(equippedPassives.length >= 2){ flashEquipMsg('보조 아이템 슬롯이 가득 찼습니다 (최대 2개)'); return; }
+    equippedPassives.push(id);
+  }
+  renderInventory();
+}
+function unequipSlot(type, index){
+  if(type === 'weapon'){
+    equippedWeapons.splice(index, 1);
+  } else {
+    equippedPassives.splice(index, 1);
+  }
+  renderInventory();
+}
+function flashEquipMsg(text){
+  const grid = document.getElementById('inventoryGrid');
+  let el = document.getElementById('invMsg');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'invMsg';
+    el.className = 'msg-toast';
+    el.style.gridColumn = '1 / -1';
+    grid.parentElement.insertBefore(el, grid);
+  }
+  el.textContent = text;
+  clearTimeout(equipMsgTimer);
+  equipMsgTimer = setTimeout(function(){ el.textContent=''; }, 2000);
+}
+
+function renderInventory(){
+  const wRow = document.getElementById('weaponSlotRow');
+  wRow.innerHTML = '';
+  for(let i=0;i<3;i++){
+    const wid = equippedWeapons[i];
+    const wDiv = document.createElement('div');
+    wDiv.className = 'equip-slot weapon-slot' + (wid?' filled':'');
+    if(wid){
+      const wit = itemById(wid);
+      wDiv.style.background = rarityColor(wit.rarity);
+      wDiv.textContent = wit.name;
+      wDiv.title = '클릭하면 해제됩니다';
+      wDiv.onclick = (function(idx){ return function(){ unequipSlot('weapon', idx); }; })(i);
+    } else {
+      wDiv.textContent = i===0 ? '기본 눈물' : '빈 슬롯';
+    }
+    wRow.appendChild(wDiv);
+  }
+  const comboLabel = document.getElementById('weaponComboLabel');
+  if(comboLabel) comboLabel.textContent = '현재 조합: ' + composeWeaponName(equippedWeapons.map(function(id){ return itemById(id).mod; }));
+
+  const pRow = document.getElementById('passiveSlotRow');
+  pRow.innerHTML = '';
+  for(let i=0;i<2;i++){
+    const id = equippedPassives[i];
+    const div = document.createElement('div');
+    div.className = 'equip-slot' + (id?' filled':'');
+    if(id){
+      const it = itemById(id);
+      div.style.background = rarityColor(it.rarity);
+      div.textContent = it.name;
+      div.title = '클릭하면 해제됩니다';
+      div.onclick = (function(idx){ return function(){ unequipSlot('passive', idx); }; })(i);
+    } else {
+      div.textContent = '빈 슬롯';
+    }
+    pRow.appendChild(div);
+  }
+
+  const grid = document.getElementById('inventoryGrid');
+  grid.innerHTML = '';
+  const ownedIds = Object.keys(inventory).filter(function(id){ return inventory[id] > 0; });
+  if(ownedIds.length === 0){
+    grid.innerHTML = '<div class="empty-state">아직 뽑은 아이템이 없어요.<br>뽑기에서 아이템을 획득해보세요.</div>';
+    return;
+  }
+  for(const id of ownedIds){
+    const it = itemById(id);
+    const owned = ownedCount(id);
+    const eqCount = equippedCount(id);
+    const isEq = eqCount > 0;
+    const card = document.createElement('div');
+    card.className = 'item-card ' + it.rarity + (isEq ? ' equipped' : '');
+    card.innerHTML = '<div class="icon" style="background:' + rarityColor(it.rarity) + '"></div>' +
+      '<div class="type-tag">' + TYPE_LABEL[it.type] + '</div>' +
+      '<div class="item-name">' + it.name + '</div>' +
+      '<div class="item-desc">' + it.desc + '</div>' +
+      '<div class="equip-tag">보유 ' + owned + '개 · 장착 ' + eqCount + '개' + (eqCount>1 ? ' (중첩 강화중)' : '') + '</div>';
+    card.onclick = function(){ equipOneMore(id); };
+    grid.appendChild(card);
+  }
+}
+
+function goToPage(name){
+  document.querySelectorAll('.page').forEach(function(p){ p.classList.remove('active'); });
+  document.getElementById('page' + name[0].toUpperCase() + name.slice(1)).classList.add('active');
+  document.getElementById('gameControlsHint').style.display = (name==='game') ? 'flex' : 'none';
+  if(name==='home') renderHome();
+  if(name==='inventory') renderInventory();
+  if(name==='gacha'){
+    renderCurrency();
+    document.getElementById('gachaStage').querySelectorAll('.pull-card').forEach(function(c){ c.remove(); });
+    document.getElementById('gachaMsg').textContent = '';
+  }
+}
+
+document.getElementById('goGachaBtn').onclick = function(){ goToPage('gacha'); };
+document.getElementById('goInventoryBtn').onclick = function(){ goToPage('inventory'); };
+document.getElementById('gachaHomeBtn').onclick = function(){ goToPage('home'); };
+document.getElementById('invHomeBtn').onclick = function(){ goToPage('home'); };
+document.getElementById('pullBtn').onclick = doGachaPull;
+document.getElementById('enterDungeonBtn').onclick = function(){ goToPage('game'); startDungeonRun(); };
+
+// =========================================================
+//  DUNGEON GAME
+// =========================================================
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+const WALL = 26;
+
+const loseOverlay = document.getElementById('loseOverlay');
+const winOverlay = document.getElementById('winOverlay');
+const heartsEl = document.getElementById('hearts');
+const roomLabelEl = document.getElementById('roomLabel');
+const weaponLabelEl = document.getElementById('weaponLabel');
+
+const ROOMS = {
+  '0,0': {type:'start'},
+  '1,0': {type:'normal'},
+  '-1,0': {type:'normal'},
+  '0,-1': {type:'treasure'},
+  '2,0': {type:'normal'},
+  '2,-1': {type:'boss'}
+};
+function key(x,y){ return x+','+y; }
+function neighbors(x,y){
+  return [
+    {dx:0,dy:-1,dir:'up'}, {dx:0,dy:1,dir:'down'},
+    {dx:-1,dy:0,dir:'left'}, {dx:1,dy:0,dir:'right'}
+  ].filter(function(n){ return !!ROOMS[key(x+n.dx,y+n.dy)]; });
+}
+let totalClearable = Object.values(ROOMS).filter(function(r){ return r.type!=='start'; }).length;
+
+let keys = {};
+let state = 'idle';
+let curX = 0, curY = 0;
+let roomsCleared = 0;
+let player, tears, enemies, eprojectiles, coins, particles;
+let visited = {};
+let laserActive = false, laserEnd = null;
+
+function freshPlayer(){
+  return {
+    x: W/2, y: H/2, r: 14,
+    speed: 3.1, dmg: 1, tearRate: 260, tearSpeed: 6.4, tearRange: 320,
+    lastShot: 0, maxHearts: 6, hearts: 6, invuln: 0, invulnBonus: 0, coinMult: 1,
+    dmgReduction: 0, weaponMods: [],
+    facing: {x:0,y:1}
+  };
+}
+
+function applyEquippedItems(p){
+  for(const id of equippedWeapons){ const w = itemById(id); if(w) w.apply(p); }
+  for(const id of equippedPassives){ const it = itemById(id); if(it) it.apply(p); }
+}
+
+function makeEnemy(type, x, y){
+  if(type==='chaser') return {type:type, x:x, y:y, r:15, hp:3, maxhp:3, speed:1.6, dmgTouch:1, hitFlash:0, coinDropped:false};
+  if(type==='brute')  return {type:type, x:x, y:y, r:19, hp:6, maxhp:6, speed:1.0, dmgTouch:2, hitFlash:0, coinDropped:false};
+  if(type==='boss')   return {type:type, x:x, y:y, r:34, hp:40, maxhp:40, speed:1.3, dmgTouch:2, hitFlash:0, cd:70, coinDropped:false};
+}
+
+function spawnCoins(en){
+  const isBoss = en.type==='boss';
+  const n = isBoss ? 5 : (Math.random()<0.6 ? 1 : 0);
+  for(let i=0;i<n;i++){
+    const ang = Math.random()*Math.PI*2;
+    const d = 10+Math.random()*22;
+    coins.push({
+      x: en.x+Math.cos(ang)*d, y: en.y+Math.sin(ang)*d, r:8,
+      value: isBoss ? (4+Math.floor(Math.random()*4)) : (1+Math.floor(Math.random()*3)),
+      bob: Math.random()*10
+    });
+  }
+}
+
+function populateRoom(x,y){
+  const rk = key(x,y);
+  const info = ROOMS[rk];
+  enemies = [];
+  eprojectiles = [];
+  coins = [];
+  if(visited[rk]) return;
+  if(info.type === 'normal'){
+    const n = 2 + Math.floor(Math.random()*2);
+    for(let i=0;i<n;i++){
+      const type = Math.random()<0.7 ? 'chaser' : 'brute';
+      enemies.push(makeEnemy(type, 150+Math.random()*(W-300), 150+Math.random()*(H-300)));
+    }
+  } else if(info.type === 'treasure'){
+    coins.push({x:W/2, y:H/2, r:14, value: 15+Math.floor(Math.random()*11), bob:0, big:true});
+  } else if(info.type === 'boss'){
+    enemies.push(makeEnemy('boss', W/2, H/2 - 60));
+  }
+}
+
+function isRoomClear(){ return enemies.filter(function(e){ return e.hp>0; }).length === 0; }
+
+function resetGame(){
+  curX = 0; curY = 0;
+  roomsCleared = 0;
+  visited = {};
+  player = freshPlayer();
+  applyEquippedItems(player);
+  tears = [];
+  particles = [];
+  laserActive = false; laserEnd = null;
+  populateRoom(curX,curY);
+}
+
+function startDungeonRun(){
+  resetGame();
+  state = 'playing';
+  loseOverlay.classList.remove('show');
+  winOverlay.classList.remove('show');
+  weaponLabelEl.textContent = composeWeaponName(player.weaponMods);
+}
+
+window.addEventListener('keydown', function(e){
+  keys[e.key.toLowerCase()] = true;
+  if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key.toLowerCase())) e.preventDefault();
+});
+window.addEventListener('keyup', function(e){ keys[e.key.toLowerCase()] = false; });
+
+const joyMove = {x:0,y:0,active:false};
+const joyAim = {x:0,y:0,active:false};
+
+function setupJoystick(el, target){
+  const knob = el.querySelector('.knob');
+  const maxR = 34;
+  function updateFromClient(clientX, clientY){
+    const rect = el.getBoundingClientRect();
+    const cx = rect.left + rect.width/2;
+    const cy = rect.top + rect.height/2;
+    let dx = clientX - cx, dy = clientY - cy;
+    const d = Math.hypot(dx,dy);
+    if(d > maxR){ dx = dx/d*maxR; dy = dy/d*maxR; }
+    knob.style.transform = 'translate(' + dx + 'px, ' + dy + 'px)';
+    const mag = Math.min(1, d/maxR);
+    const ang = Math.atan2(dy,dx);
+    if(mag > 0.15){ target.x = Math.cos(ang)*mag; target.y = Math.sin(ang)*mag; }
+    else { target.x = 0; target.y = 0; }
+    target.active = true;
+  }
+  function reset(){
+    knob.style.transform = 'translate(0px,0px)';
+    target.x = 0; target.y = 0; target.active = false;
+  }
+  function containsPoint(clientX, clientY){
+    const rect = el.getBoundingClientRect();
+    const cx = rect.left + rect.width/2;
+    const cy = rect.top + rect.height/2;
+    return Math.hypot(clientX-cx, clientY-cy) < (rect.width/2) * 1.6;
+  }
+  return { updateFromClient: updateFromClient, reset: reset, containsPoint: containsPoint };
+}
+
+const joyMoveCtrl = setupJoystick(document.getElementById('joyMove'), joyMove);
+const joyAimCtrl = setupJoystick(document.getElementById('joyAim'), joyAim);
+const sticks = [joyMoveCtrl, joyAimCtrl];
+
+const touchOwners = {};
+const pointerOwners = {};
+function ownerAt(clientX, clientY){
+  for(const s of sticks){ if(s.containsPoint(clientX, clientY)) return s; }
+  return null;
+}
+document.addEventListener('touchstart', function(e){
+  let handled = false;
+  for(const t of e.changedTouches){
+    if(touchOwners[t.identifier]) continue;
+    const owner = ownerAt(t.clientX, t.clientY);
+    if(owner){ touchOwners[t.identifier] = owner; owner.updateFromClient(t.clientX, t.clientY); handled = true; }
+  }
+  if(handled) e.preventDefault();
+}, {passive:false});
+document.addEventListener('touchmove', function(e){
+  let handled = false;
+  for(const t of e.changedTouches){
+    const owner = touchOwners[t.identifier];
+    if(owner){ owner.updateFromClient(t.clientX, t.clientY); handled = true; }
+  }
+  if(handled) e.preventDefault();
+}, {passive:false});
+function endTouch(e){
+  for(const t of e.changedTouches){
+    const owner = touchOwners[t.identifier];
+    if(owner){ owner.reset(); delete touchOwners[t.identifier]; }
+  }
+}
+document.addEventListener('touchend', endTouch, {passive:false});
+document.addEventListener('touchcancel', endTouch, {passive:false});
+document.addEventListener('pointerdown', function(e){
+  if(e.pointerType === 'touch') return;
+  const owner = ownerAt(e.clientX, e.clientY);
+  if(owner){ pointerOwners[e.pointerId] = owner; owner.updateFromClient(e.clientX, e.clientY); }
+});
+document.addEventListener('pointermove', function(e){
+  const owner = pointerOwners[e.pointerId];
+  if(owner) owner.updateFromClient(e.clientX, e.clientY);
+});
+['pointerup','pointercancel'].forEach(function(evt){
+  document.addEventListener(evt, function(e){
+    const owner = pointerOwners[e.pointerId];
+    if(owner){ owner.reset(); delete pointerOwners[e.pointerId]; }
+  });
+});
+
+function fitCanvas(){
+  if(window.CSS && CSS.supports && CSS.supports('aspect-ratio: 1 / 1')) return;
+  const w = canvas.parentElement.clientWidth;
+  canvas.style.width = w + 'px';
+  canvas.style.height = (w * H / W) + 'px';
+}
+fitCanvas();
+window.addEventListener('resize', fitCanvas);
+
+document.getElementById('loseHomeBtn').onclick = function(){ loseOverlay.classList.remove('show'); state='idle'; goToPage('home'); };
+document.getElementById('winHomeBtn').onclick = function(){ winOverlay.classList.remove('show'); state='idle'; goToPage('home'); };
+
+function makeTear(angle, overrides){
+  const base = {
+    x:player.x, y:player.y,
+    vx:Math.cos(angle)*player.tearSpeed, vy:Math.sin(angle)*player.tearSpeed,
+    r:6, dist:0, dmg:player.dmg, hitSet:new Set(), consumeOnHit:true
+  };
+  return Object.assign(base, overrides||{});
+}
+// Level = how many copies of that modifier are equipped at once. Equipping
+// the same weapon module 2-3 times in the 3 weapon slots stacks its level,
+// making that trait progressively stronger (see per-mod comments below).
+function modLevel(mod){
+  return (player.weaponMods||[]).filter(function(m){ return m===mod; }).length;
+}
+function fireTears(){
+  const baseAng = Math.atan2(player.facing.y, player.facing.x);
+  const tripleLv = modLevel('triple');
+  const shotgunLv = modLevel('shotgun');
+  const pierceLv = modLevel('pierce');
+  const homingLv = modLevel('homing');
+  const boomerangLv = modLevel('boomerang');
+  const explosiveLv = modLevel('explosive');
+
+  // spread modifiers: each extra level adds another pair of wider angles
+  let offsets = [0];
+  if(tripleLv>=1) offsets = offsets.concat([-0.28, 0.28]);
+  if(tripleLv>=2) offsets = offsets.concat([-0.5, 0.5]);
+  if(tripleLv>=3) offsets = offsets.concat([-0.72, 0.72]);
+  if(shotgunLv>=1) offsets = offsets.concat([-0.32, -0.16, 0.16, 0.32]);
+  if(shotgunLv>=2) offsets = offsets.concat([-0.48, 0.48]);
+  if(shotgunLv>=3) offsets = offsets.concat([-0.64, 0.64]);
+  offsets = Array.from(new Set(offsets.map(o=>Math.round(o*1000)))).map(o=>o/1000).sort(function(a,b){ return a-b; });
+
+  // per-tear flags + intensity, applied to every tear fired this shot
+  const dmgMult = shotgunLv>0 ? 0.6 : 1;
+  let r = 6;
+  if(shotgunLv>0) r = 5;
+  if(pierceLv>0) r += pierceLv; // each pierce level makes the tear a little chunkier (easier to catch more enemies)
+  const overrides = {
+    dmg: player.dmg*dmgMult + pierceLv*0.3, // each pierce level also adds flat damage
+    r: r,
+    pierce: pierceLv>0, pierceLv: pierceLv,
+    homing: homingLv>0, homingLv: homingLv,
+    boomerang: boomerangLv>0, boomerangLv: boomerangLv,
+    explosive: explosiveLv>0, explosiveLv: explosiveLv,
+    consumeOnHit: !(pierceLv>0 || boomerangLv>0),
+    phase: boomerangLv>0 ? 'out' : undefined
+  };
+
+  for(const off of offsets){
+    tears.push(makeTear(baseAng + off, Object.assign({}, overrides)));
+  }
+}
+function distToSegment(px,py,x1,y1,x2,y2){
+  const dx=x2-x1, dy=y2-y1;
+  const lenSq = dx*dx+dy*dy;
+  let t = lenSq>0 ? ((px-x1)*dx+(py-y1)*dy)/lenSq : 0;
+  t = Math.max(0, Math.min(1,t));
+  const cx = x1+t*dx, cy = y1+t*dy;
+  return Math.hypot(px-cx, py-cy);
+}
+function fireLaserBeam(){
+  laserActive = true;
+  const lv = modLevel('laser');
+  const ang = Math.atan2(player.facing.y, player.facing.x);
+  const x2 = player.x + Math.cos(ang)*player.tearRange;
+  const y2 = player.y + Math.sin(ang)*player.tearRange;
+  laserEnd = {x:x2, y:y2};
+  const perFrameDmg = player.dmg*0.14*(1 + 0.5*(lv-1)); // each extra laser level adds +50% beam DPS
+  for(const en of enemies){
+    if(en.hp<=0) continue;
+    if(distToSegment(en.x,en.y, player.x,player.y, x2,y2) < en.r+4){
+      en.hp -= perFrameDmg;
+      en.hitFlash = 4;
+      if(en.hp<=0 && !en.coinDropped){ en.coinDropped=true; spawnCoins(en); spawnParticles(en.x,en.y,'#8a2233',18); }
+    }
+  }
+}
+
+function update(dt, t){
+  if(state !== 'playing') return;
+
+  let dx=0, dy=0;
+  if(keys['w']) dy -= 1;
+  if(keys['s']) dy += 1;
+  if(keys['a']) dx -= 1;
+  if(keys['d']) dx += 1;
+  const len = Math.hypot(dx,dy);
+  if(len>0){ dx/=len; dy/=len; }
+  if(joyMove.active && (joyMove.x!==0 || joyMove.y!==0)){ dx = joyMove.x; dy = joyMove.y; }
+  let nx = player.x + dx*player.speed;
+  let ny = player.y + dy*player.speed;
+  nx = Math.max(WALL+player.r, Math.min(W-WALL-player.r, nx));
+  ny = Math.max(WALL+player.r, Math.min(H-WALL-player.r, ny));
+  player.x = nx; player.y = ny;
+
+  handleDoorTransition();
+
+  let sx=0, sy=0;
+  if(keys['arrowup']) sy -= 1;
+  if(keys['arrowdown']) sy += 1;
+  if(keys['arrowleft']) sx -= 1;
+  if(keys['arrowright']) sx += 1;
+  if(joyAim.active && (joyAim.x!==0 || joyAim.y!==0)){ sx = joyAim.x; sy = joyAim.y; }
+  if(sx!==0||sy!==0){
+    const sl = Math.hypot(sx,sy);
+    player.facing = {x:sx/sl, y:sy/sl};
+    if((player.weaponMods||[]).includes('laser')){
+      fireLaserBeam();
+    } else {
+      laserActive = false;
+      if(t - player.lastShot > player.tearRate){
+        player.lastShot = t;
+        fireTears();
+      }
+    }
+  } else {
+    laserActive = false;
+  }
+
+  for(const tr of tears){
+    if(tr.dist >= 99999) continue;
+    if(tr.homing){
+      const homLv = tr.homingLv || 1;
+      const detectR = 220 + 50*homLv;   // more levels = spots enemies from further away
+      const turnRate = 0.08 + 0.05*homLv; // more levels = curves harder
+      let nearest=null, nd=99999;
+      for(const en of enemies){ if(en.hp<=0) continue; const dd=dist(en,tr); if(dd<nd){ nd=dd; nearest=en; } }
+      if(nearest && nd < detectR){
+        const curAngle = Math.atan2(tr.vy,tr.vx);
+        const targetAngle = Math.atan2(nearest.y-tr.y, nearest.x-tr.x);
+        let diff = targetAngle-curAngle;
+        while(diff>Math.PI) diff-=Math.PI*2;
+        while(diff<-Math.PI) diff+=Math.PI*2;
+        const turn = Math.max(-turnRate, Math.min(turnRate, diff));
+        const newAngle = curAngle+turn;
+        const spd = Math.hypot(tr.vx,tr.vy);
+        tr.vx = Math.cos(newAngle)*spd; tr.vy = Math.sin(newAngle)*spd;
+      }
+    }
+    if(tr.boomerang){
+      const boomLv = tr.boomerangLv || 1;
+      const outFrac = 0.5 + 0.08*(boomLv-1);       // more levels = flies out further before turning back
+      const returnSpeedMult = 1 + 0.15*(boomLv-1); // more levels = returns faster
+      if(tr.phase==='out'){
+        if(tr.dist > player.tearRange*outFrac) tr.phase = 'back';
+      } else {
+        const ang = Math.atan2(player.y-tr.y, player.x-tr.x);
+        tr.vx = Math.cos(ang)*player.tearSpeed*returnSpeedMult; tr.vy = Math.sin(ang)*player.tearSpeed*returnSpeedMult;
+      }
+    }
+    tr.x += tr.vx; tr.y += tr.vy; tr.dist += Math.hypot(tr.vx,tr.vy);
+  }
+  tears = tears.filter(function(tr){
+    if(tr.dist >= 99999) return false;
+    if(tr.boomerang && tr.phase==='back' && dist(tr,player) < player.r+tr.r+4) return false;
+    if(tr.x<=0||tr.x>=W||tr.y<=0||tr.y>=H) return false;
+    const maxDist = tr.boomerang ? player.tearRange*1.5 : player.tearRange;
+    return tr.dist < maxDist;
+  });
+
+  for(const en of enemies){
+    if(en.hp<=0) continue;
+    if(en.hitFlash>0) en.hitFlash--;
+    if(en.type==='chaser' || en.type==='brute' || en.type==='boss'){
+      const ang = Math.atan2(player.y-en.y, player.x-en.x);
+      en.x += Math.cos(ang)*en.speed;
+      en.y += Math.sin(ang)*en.speed;
+    }
+    if(en.type==='boss'){
+      en.cd--;
+      if(en.cd<=0){
+        en.cd = 55;
+        for(let a=0;a<8;a++){
+          const ang = (Math.PI*2/8)*a;
+          eprojectiles.push({x:en.x,y:en.y,vx:Math.cos(ang)*3, vy:Math.sin(ang)*3, r:7});
+        }
+      }
+    }
+    en.x = Math.max(WALL+en.r, Math.min(W-WALL-en.r, en.x));
+    en.y = Math.max(WALL+en.r, Math.min(H-WALL-en.r, en.y));
+
+    if(player.invuln<=0 && dist(en,player) < en.r+player.r){ damagePlayer(en.dmgTouch); }
+
+    for(const tr of tears){
+      if(tr.dist >= 99999) continue;
+      if(tr.hitSet.has(en)) continue;
+      if(dist(en,tr) < en.r+tr.r){
+        tr.hitSet.add(en);
+        en.hp -= tr.dmg;
+        en.hitFlash = 8;
+        spawnParticles(tr.x,tr.y,'#b3273f');
+        if(tr.explosive){
+          const expLv = tr.explosiveLv || 1;
+          const radius = 55 + 20*expLv;      // more levels = bigger blast
+          const splashMult = 0.45 + 0.15*expLv; // more levels = harder splash hit
+          for(const other of enemies){
+            if(other===en || other.hp<=0) continue;
+            if(dist(other,tr) < radius){ other.hp -= tr.dmg*splashMult; other.hitFlash = 8; }
+          }
+          spawnParticles(tr.x,tr.y,'#e8935a',16);
+        }
+        if(tr.consumeOnHit) tr.dist = 99999;
+        if(en.hp<=0 && !en.coinDropped){
+          en.coinDropped = true;
+          spawnCoins(en);
+          spawnParticles(en.x,en.y,'#8a2233',18);
+        }
+      }
+    }
+  }
+
+  for(const p of eprojectiles){ p.x+=p.vx; p.y+=p.vy; }
+  eprojectiles = eprojectiles.filter(function(p){ return p.x>0&&p.x<W&&p.y>0&&p.y<H; });
+  for(const p of eprojectiles){
+    if(player.invuln<=0 && dist(p,player) < p.r+player.r){ damagePlayer(1); p.x=-999; }
+  }
+
+  for(const c of coins){
+    c.bob += 0.05;
+    if(dist(c,player) < c.r+player.r){
+      c.taken = true;
+      currency += Math.round(c.value * (player.coinMult||1));
+      renderCurrency();
+      spawnParticles(c.x,c.y,'#f0d98c',12);
+    }
+  }
+  coins = coins.filter(function(c){ return !c.taken; });
+
+  for(const pt of particles){ pt.x+=pt.vx; pt.y+=pt.vy; pt.vx*=0.94; pt.vy*=0.94; pt.life--; }
+  particles = particles.filter(function(pt){ return pt.life>0; });
+
+  if(player.invuln>0) player.invuln--;
+
+  const rk = key(curX,curY);
+  if(!visited[rk] && isRoomClear() && ROOMS[rk].type!=='start'){ visited[rk] = true; roomsCleared++; }
+  if(!visited[rk] && ROOMS[rk].type==='start'){ visited[rk] = true; }
+
+  if(ROOMS[rk].type==='boss' && enemies.length>0 && isRoomClear() && state==='playing'){
+    state = 'won';
+    winOverlay.classList.add('show');
+  }
+  if(player.hearts<=0 && state==='playing'){
+    state = 'lost';
+    loseOverlay.classList.add('show');
+  }
+}
+
+function dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
+
+function damagePlayer(amount){
+  const loss = Math.max(1, amount*2 - (player.dmgReduction||0));
+  player.hearts = Math.max(0, player.hearts - loss);
+  player.invuln = 60 + (player.invulnBonus||0);
+  spawnParticles(player.x, player.y, '#b3273f', 10);
+}
+
+function spawnParticles(x,y,color,n){
+  n = n || 8;
+  for(let i=0;i<n;i++){
+    const a = Math.random()*Math.PI*2;
+    const sp = 1+Math.random()*3;
+    particles.push({x:x,y:y,vx:Math.cos(a)*sp, vy:Math.sin(a)*sp, life: 20+Math.random()*15, color:color});
+  }
+}
+
+function handleDoorTransition(){
+  const avail = neighbors(curX,curY);
+  const clear = isRoomClear();
+  for(const n of avail){
+    if(!clear) continue;
+    let crossed = false, newX=curX, newY=curY, entryX=player.x, entryY=player.y;
+    // door gaps are 60px wide, centered on the wall (see drawRoom) — only
+    // trigger a room change when the player is actually within that gap,
+    // not anywhere along the solid wall.
+    const inDoorX = player.x > W/2-30 && player.x < W/2+30;
+    const inDoorY = player.y > H/2-30 && player.y < H/2+30;
+    if(n.dir==='up' && player.y < WALL+player.r+2 && inDoorX){ crossed=true; newY=curY-1; entryY = H-WALL-player.r-8; }
+    if(n.dir==='down' && player.y > H-WALL-player.r-2 && inDoorX){ crossed=true; newY=curY+1; entryY = WALL+player.r+8; }
+    if(n.dir==='left' && player.x < WALL+player.r+2 && inDoorY){ crossed=true; newX=curX-1; entryX = W-WALL-player.r-8; }
+    if(n.dir==='right' && player.x > W-WALL-player.r-2 && inDoorY){ crossed=true; newX=curX+1; entryX = WALL+player.r+8; }
+    if(crossed){
+      curX = newX; curY = newY;
+      player.x = entryX; player.y = entryY;
+      populateRoom(curX,curY);
+      return;
+    }
+  }
+}
+
+function drawRoom(){
+  ctx.fillStyle = '#0d0b12';
+  ctx.fillRect(0,0,W,H);
+  ctx.fillStyle = '#171320';
+  ctx.fillRect(WALL,WALL,W-WALL*2,H-WALL*2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.02)';
+  for(let gx=WALL; gx<W-WALL; gx+=40){ ctx.beginPath(); ctx.moveTo(gx,WALL); ctx.lineTo(gx,H-WALL); ctx.stroke(); }
+  for(let gy=WALL; gy<H-WALL; gy+=40){ ctx.beginPath(); ctx.moveTo(WALL,gy); ctx.lineTo(W-WALL,gy); ctx.stroke(); }
+  ctx.fillStyle = '#2a2433';
+  ctx.fillRect(0,0,W,WALL); ctx.fillRect(0,H-WALL,W,WALL); ctx.fillRect(0,0,WALL,H); ctx.fillRect(W-WALL,0,WALL,H);
+
+  const avail = neighbors(curX,curY);
+  const clear = isRoomClear();
+  for(const n of avail){
+    ctx.fillStyle = clear ? '#0d0b12' : '#4a3a2a';
+    if(n.dir==='up') ctx.fillRect(W/2-30,0,60,WALL);
+    if(n.dir==='down') ctx.fillRect(W/2-30,H-WALL,60,WALL);
+    if(n.dir==='left') ctx.fillRect(0,H/2-30,WALL,60);
+    if(n.dir==='right') ctx.fillRect(W-WALL,H/2-30,WALL,60);
+    if(!clear){
+      ctx.strokeStyle = '#b3273f'; ctx.lineWidth = 2;
+      if(n.dir==='up') ctx.strokeRect(W/2-30,2,60,WALL-2);
+      if(n.dir==='down') ctx.strokeRect(W/2-30,H-WALL,60,WALL-2);
+      if(n.dir==='left') ctx.strokeRect(2,H/2-30,WALL-2,60);
+      if(n.dir==='right') ctx.strokeRect(W-WALL,H/2-30,WALL-2,60);
+    }
+  }
+}
+
+function drawPlayer(){
+  const flash = player.invuln>0 && Math.floor(player.invuln/4)%2===0;
+  ctx.save();
+  ctx.globalAlpha = flash ? 0.4 : 1;
+  ctx.fillStyle = '#e8c77e';
+  ctx.beginPath(); ctx.ellipse(player.x, player.y, player.r, player.r*1.05, 0, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#1a1420';
+  const ex = player.facing.x*4, ey=player.facing.y*4;
+  ctx.beginPath(); ctx.arc(player.x-5+ex, player.y-2+ey, 2.4,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(player.x+5+ex, player.y-2+ey, 2.4,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+
+function drawEnemy(en){
+  if(en.hp<=0) return;
+  ctx.save();
+  ctx.fillStyle = en.hitFlash>0 ? '#ffffff' : (en.type==='boss' ? '#7a2a3a' : en.type==='brute' ? '#3a4a2a' : '#8a2233');
+  ctx.beginPath(); ctx.arc(en.x, en.y, en.r, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#1a1420';
+  ctx.beginPath(); ctx.arc(en.x-en.r*0.3, en.y-en.r*0.2, en.r*0.15,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(en.x+en.r*0.3, en.y-en.r*0.2, en.r*0.15,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+  if(en.type==='boss'){
+    const bw = 200;
+    ctx.fillStyle='#000'; ctx.fillRect(W/2-bw/2, 44, bw, 8);
+    ctx.fillStyle='#b3273f'; ctx.fillRect(W/2-bw/2, 44, bw*(en.hp/en.maxhp), 8);
+  }
+}
+
+function drawTears(){
+  ctx.fillStyle = '#cfe8f0';
+  for(const tr of tears){ if(tr.dist>=99999) continue; ctx.beginPath(); ctx.arc(tr.x,tr.y,tr.r,0,Math.PI*2); ctx.fill(); }
+  ctx.fillStyle = '#8a2233';
+  for(const p of eprojectiles){ ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill(); }
+  if(laserActive && laserEnd){
+    ctx.save();
+    ctx.strokeStyle = 'rgba(169,212,240,0.9)';
+    ctx.lineWidth = 5;
+    ctx.shadowColor = '#a9d4f0';
+    ctx.shadowBlur = 12;
+    ctx.beginPath(); ctx.moveTo(player.x,player.y); ctx.lineTo(laserEnd.x, laserEnd.y); ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawCoins(){
+  for(const c of coins){
+    const yOff = Math.sin(c.bob)*4;
+    ctx.save();
+    ctx.translate(c.x, c.y+yOff);
+    ctx.fillStyle = c.big ? '#f5dca0' : '#e8c77e';
+    ctx.beginPath(); ctx.arc(0,0,c.r,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle = '#8a6a2a'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(0,0,c.r*0.6,0,Math.PI*2); ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawParticles(){
+  for(const pt of particles){
+    ctx.globalAlpha = Math.max(0, pt.life/30);
+    ctx.fillStyle = pt.color;
+    ctx.fillRect(pt.x-2, pt.y-2, 4,4);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function draw(){
+  drawRoom();
+  drawCoins();
+  for(const en of enemies) drawEnemy(en);
+  drawTears();
+  drawPlayer();
+  drawParticles();
+}
+
+function updateHUD(){
+  heartsEl.innerHTML = '';
+  const full = Math.floor(player.hearts/2), half = player.hearts%2;
+  const totalSlots = Math.ceil(player.maxHearts/2);
+  for(let i=0;i<totalSlots;i++){
+    const d = document.createElement('div');
+    if(i<full) d.className='heart';
+    else if(i===full && half) d.className='heart half';
+    else d.className='heart empty';
+    heartsEl.appendChild(d);
+  }
+  roomLabelEl.textContent = '방 ' + roomsCleared + '/' + totalClearable + ' 정리됨';
+  document.getElementById('runCoins').textContent = currency;
+}
+
+let lastT=0;
+function loop(t){
+  const dt = t-lastT; lastT=t;
+  try{
+    if(state==='playing'){ update(dt, t); draw(); updateHUD(); }
+  }catch(err){
+    const box = document.getElementById('errBox');
+    if(box){ box.style.display = 'block'; box.textContent = '오류 발생: ' + err.message; }
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+resetGame();
+document.getElementById('gameControlsHint').style.display = 'none';
+renderHome();
+
+})();
+</script>
+</body>
+</html>
