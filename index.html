@@ -83,11 +83,13 @@ h1{
   touch-action: none;
   overflow:hidden;
   display:flex;
-  flex-direction:column;
+  flex-direction:row;
+  align-items:stretch;
 }
 .screen-area{
   position:relative;
-  width:100%;
+  flex:1;
+  min-width:0;
   touch-action:none;
 }
 .screen-area::before, .screen-area::after{
@@ -131,23 +133,25 @@ h1{
   box-shadow: inset 0 0 90px 30px rgba(0,0,0,0.65);
 }
 
-/* Control bar sits BELOW the screen, entirely outside the canvas, so the
-   joysticks never sit on top of (or block) gameplay. */
-.control-bar{
+/* Side bars sit to the LEFT and RIGHT of the screen, entirely outside the
+   canvas, so the joysticks never sit on top of (or block) gameplay — and
+   on a short landscape phone screen this uses the spare horizontal room
+   instead of eating into the limited vertical space. */
+.side-bar{
+  width: 84px;
+  flex-shrink:0;
   display:flex;
   align-items:center;
-  justify-content:space-between;
-  gap:10px;
-  padding: 10px 16px 22px;
+  justify-content:center;
   background: linear-gradient(180deg, #241a33, #150f20);
-  border-top: 2px solid var(--stone-light);
   touch-action: none;
-  flex-shrink:0;
 }
+.side-bar.left{ border-right: 2px solid var(--stone-light); }
+.side-bar.right{ border-left: 2px solid var(--stone-light); }
 
 .joystick{
   position:relative;
-  width: 84px; height: 84px;
+  width: 68px; height: 68px;
   border-radius: 50%;
   background: rgba(46,230,214,0.06);
   border: 2px solid rgba(46,230,214,0.4);
@@ -158,8 +162,8 @@ h1{
 .joystick .knob{
   position:absolute;
   left:50%; top:50%;
-  width: 38px; height:38px;
-  margin-left:-19px; margin-top:-19px;
+  width: 32px; height:32px;
+  margin-left:-16px; margin-top:-16px;
   border-radius:50%;
   background: radial-gradient(circle at 35% 30%, #ffe98a, var(--candle));
   border: 2px solid #fff3c4;
@@ -327,6 +331,19 @@ button:disabled{ opacity:0.4; cursor:not-allowed; }
   transform: scale(1.08);
 }
 
+.gacha-tabs{ display:flex; gap:8px; justify-content:center; flex-wrap:wrap; }
+.gacha-tab{
+  font-family:'Press Start 2P', monospace;
+  font-size:10px;
+  padding:10px 14px;
+  border-radius:6px;
+  border:2px solid var(--stone-light);
+  background:#171320;
+  color:#9d95a8;
+  cursor:pointer;
+}
+.gacha-tab.selected{ border-color: var(--candle); color: var(--candle); box-shadow:0 0 10px rgba(255,210,63,0.35); }
+
 .gacha-stage{
   display:flex; flex-direction:column; align-items:center; gap:14px;
   min-height:220px; justify-content:center;
@@ -419,9 +436,17 @@ button:disabled{ opacity:0.4; cursor:not-allowed; }
 
   <div class="page" id="pageGacha">
     <div class="currency-bar" id="gachaCoinDisplay">0</div>
+    <div class="page-box">
+      <p class="section-label">뽑기 종류 선택</p>
+      <div class="gacha-tabs" id="gachaTabs">
+        <button class="gacha-tab" data-cat="weapon">무기</button>
+        <button class="gacha-tab" data-cat="armor">방어구</button>
+        <button class="gacha-tab" data-cat="passive">보조 아이템</button>
+      </div>
+    </div>
     <div class="page-box gacha-stage" id="gachaStage">
       <p style="font-size:12px;color:#9d95a8;">1회 뽑기 비용: <b style="color:#f0d98c;">15 코인</b></p>
-      <button id="pullBtn">뽑기 (15 코인)</button>
+      <button id="pullBtn">무기 뽑기 (15 코인)</button>
       <div class="msg-toast" id="gachaMsg"></div>
     </div>
     <div class="footer-nav">
@@ -449,6 +474,10 @@ button:disabled{ opacity:0.4; cursor:not-allowed; }
   </div>
 
   <div class="game-frame page" id="pageGame">
+    <div class="side-bar left" id="sideBarLeft">
+      <div class="joystick" id="joyMove"><div class="knob"></div><div class="label">이동</div></div>
+    </div>
+
     <div class="screen-area">
       <canvas id="gameCanvas" width="800" height="450"></canvas>
       <div class="scanlines"></div>
@@ -477,8 +506,7 @@ button:disabled{ opacity:0.4; cursor:not-allowed; }
       </div>
     </div>
 
-    <div class="control-bar" id="controlBar">
-      <div class="joystick" id="joyMove"><div class="knob"></div><div class="label">이동</div></div>
+    <div class="side-bar right" id="sideBarRight">
       <div class="joystick" id="joyAim"><div class="knob"></div><div class="label">발사</div></div>
     </div>
   </div>
@@ -615,11 +643,14 @@ function itemById(id){ return ITEM_POOL.find(i=>i.id===id); }
 
 const PULL_COST = 15;
 const RARITY_LABEL = {common:'일반', rare:'희귀', legendary:'전설'};
+const CATEGORY_LABEL = {weapon:'무기', armor:'방어구', passive:'보조 아이템'};
+let gachaCategory = 'weapon';
 
 function rollRarity(){
+  // Big gap between tiers so legendary actually feels rare.
   const r = Math.random();
-  if(r < 0.08) return 'legendary';
-  if(r < 0.42) return 'rare';
+  if(r < 0.03) return 'legendary';
+  if(r < 0.20) return 'rare';
   return 'common';
 }
 function doGachaPull(){
@@ -627,7 +658,7 @@ function doGachaPull(){
   if(currency < PULL_COST){ msg.textContent = '코인이 부족합니다.'; return; }
   currency -= PULL_COST;
   const rarity = rollRarity();
-  const pool = ITEM_POOL.filter(i=>i.rarity===rarity);
+  const pool = ITEM_POOL.filter(function(i){ return i.rarity===rarity && i.type===gachaCategory; });
   const item = pool[Math.floor(Math.random()*pool.length)];
   const wasOwned = !!inventory[item.id];
   inventory[item.id] = (inventory[item.id]||0) + 1;
@@ -823,6 +854,23 @@ function renderInventory(){
   }
 }
 
+function renderGachaTabs(){
+  const tabs = document.querySelectorAll('.gacha-tab');
+  tabs.forEach(function(t){
+    t.classList.toggle('selected', t.dataset.cat === gachaCategory);
+  });
+  const pullBtn = document.getElementById('pullBtn');
+  if(pullBtn) pullBtn.textContent = CATEGORY_LABEL[gachaCategory] + ' 뽑기 (15 코인)';
+}
+document.querySelectorAll('.gacha-tab').forEach(function(t){
+  t.onclick = function(){
+    gachaCategory = t.dataset.cat;
+    renderGachaTabs();
+    document.getElementById('gachaStage').querySelectorAll('.pull-card').forEach(function(c){ c.remove(); });
+    document.getElementById('gachaMsg').textContent = '';
+  };
+});
+
 function goToPage(name){
   document.querySelectorAll('.page').forEach(function(p){ p.classList.remove('active'); });
   document.getElementById('page' + name[0].toUpperCase() + name.slice(1)).classList.add('active');
@@ -831,6 +879,7 @@ function goToPage(name){
   if(name==='inventory') renderInventory();
   if(name==='gacha'){
     renderCurrency();
+    renderGachaTabs();
     document.getElementById('gachaStage').querySelectorAll('.pull-card').forEach(function(c){ c.remove(); });
     document.getElementById('gachaMsg').textContent = '';
   }
@@ -939,6 +988,7 @@ function freshPlayer(){
     lastShot: 0, maxHearts: 6, hearts: 6, invuln: 0, invulnBonus: 0, coinMult: 1,
     dmgReduction: 0, weaponMods: [], armorMods: [],
     armorPower: {thorns:0, barrier:0, reflect:0}, wardMult: 1,
+    slowTimer: 0, slowMult: 1,
     shield: 0, shieldMax: 0, shieldRegenCd: 0,
     facing: {x:0,y:1}
   };
@@ -953,12 +1003,25 @@ function armorLevel(mod){
   return (player.armorMods||[]).filter(function(m){ return m===mod; }).length;
 }
 
-// Only melee enemies ('chaser'/'brute') spawn in normal rooms — regular
-// monsters never fire projectiles. Bosses are the only ranged threat.
+// Melee basics unlock from stage 1; tougher archetypes unlock gradually
+// as stages progress so the mix of threats keeps growing.
+function unlockedEnemyTypes(stage){
+  const list = ['chaser','brute'];
+  if(stage>=2) list.push('shooter');
+  if(stage>=3) list.push('charger');
+  if(stage>=4) list.push('bomber');
+  if(stage>=5) list.push('debuffer');
+  return list;
+}
+
 function makeEnemy(type, x, y){
   const m = stageDifficulty;
   if(type==='chaser') return {type:type, x:x, y:y, r:15, hp:Math.round(3*m), maxhp:Math.round(3*m), speed:Math.min(2.6, 1.6*(1+(m-1)*0.15)), dmgTouch:1, hitFlash:0, coinDropped:false};
   if(type==='brute')  return {type:type, x:x, y:y, r:19, hp:Math.round(6*m), maxhp:Math.round(6*m), speed:Math.min(1.8, 1.0*(1+(m-1)*0.15)), dmgTouch:2, hitFlash:0, coinDropped:false};
+  if(type==='shooter') return {type:type, x:x, y:y, r:14, hp:Math.round(2.5*m), maxhp:Math.round(2.5*m), speed:Math.min(1.4, 0.9*(1+(m-1)*0.12)), dmgTouch:1, hitFlash:0, coinDropped:false, cd:70+Math.random()*40};
+  if(type==='charger') return {type:type, x:x, y:y, r:16, hp:Math.round(4*m), maxhp:Math.round(4*m), speed:Math.min(1.6, 1.1*(1+(m-1)*0.12)), dashSpeed:Math.min(8, 5.2*(1+(m-1)*0.1)), dmgTouch:2, hitFlash:0, coinDropped:false, chargeState:'approach', chargeCd:0, dashAngle:0};
+  if(type==='bomber') return {type:type, x:x, y:y, r:15, hp:Math.round(2*m), maxhp:Math.round(2*m), speed:Math.min(2.0, 1.3*(1+(m-1)*0.15)), dmgTouch:0, hitFlash:0, coinDropped:false, fuse:220, exploded:false};
+  if(type==='debuffer') return {type:type, x:x, y:y, r:15, hp:Math.round(2.5*m), maxhp:Math.round(2.5*m), speed:Math.min(1.5, 1.0*(1+(m-1)*0.12)), dmgTouch:1, hitFlash:0, coinDropped:false};
 }
 
 const BOSS_KINDS = ['sentinel','cleric','maggot','twin_wraith'];
@@ -1020,8 +1083,9 @@ function populateRoom(x,y){
     // entry point, so walking in never immediately puts you in contact
     // with an enemy.
     const maxR = Math.min(W,H)/2 - 90;
+    const pool = unlockedEnemyTypes(currentStage);
     for(let i=0;i<n;i++){
-      const type = Math.random()<0.7 ? 'chaser' : 'brute';
+      const type = pool[Math.floor(Math.random()*pool.length)];
       const ang = Math.random()*Math.PI*2;
       const rad = Math.random()*maxR;
       enemies.push(makeEnemy(type, W/2+Math.cos(ang)*rad, H/2+Math.sin(ang)*rad));
@@ -1044,7 +1108,7 @@ function isRoomClear(){ return enemies.filter(function(e){ return e.hp>0; }).len
 function resetGame(){
   ROOMS = generateDungeon(currentStage);
   totalClearable = Object.values(ROOMS).filter(function(r){ return r.type!=='start'; }).length;
-  stageDifficulty = 1 + (currentStage-1)*0.28;
+  stageDifficulty = Math.min(1 + (currentStage-1)*0.28, 4.2); // caps out so enemies never grow unboundedly strong
   curX = 0; curY = 0;
   roomsCleared = 0;
   visited = {};
@@ -1166,7 +1230,8 @@ document.addEventListener('pointermove', function(e){
 // time the game page becomes visible (control-bar height is only
 // measurable once its subtree is actually laid out, i.e. not display:none).
 const pageGameEl = document.getElementById('pageGame');
-const controlBarEl = document.getElementById('controlBar');
+const SIDE_BAR_W = 84; // must match .side-bar { width } in CSS
+
 function fitCanvas(){
   const vw = window.innerWidth;
   const vh = window.innerHeight;
@@ -1178,13 +1243,14 @@ function fitCanvas(){
   if(h1El) chromeH += h1El.offsetHeight;
   if(subEl) chromeH += subEl.offsetHeight + 14;
   if(hintEl && getComputedStyle(hintEl).display !== 'none') chromeH += hintEl.offsetHeight + 14;
-  const barH = controlBarEl ? controlBarEl.offsetHeight : 90;
-  const availH = Math.max(160, vh - chromeH - barH - 16);
-  const availW = vw * 0.97;
-  let w = Math.min(availW, 800);
-  let h = w * 9/16;
-  if(h > availH){ h = availH; w = h * 16/9; }
-  if(pageGameEl) pageGameEl.style.width = w + 'px';
+  const availH = Math.max(140, vh - chromeH - 16);
+  const sideW = SIDE_BAR_W * 2;
+  const appMaxW = Math.min(800, vw * 0.96);
+  const availW = Math.max(120, Math.min(vw * 0.98, appMaxW) - sideW);
+  let screenW = availW;
+  let screenH = screenW * 9/16;
+  if(screenH > availH){ screenH = availH; screenW = screenH * 16/9; }
+  if(pageGameEl) pageGameEl.style.width = (screenW + sideW) + 'px';
 }
 fitCanvas();
 window.addEventListener('resize', fitCanvas);
@@ -1227,7 +1293,7 @@ function fireTears(){
   if(shotgunLv>=3) offsets = offsets.concat([-0.64, 0.64]);
   offsets = Array.from(new Set(offsets.map(o=>Math.round(o*1000)))).map(o=>o/1000).sort(function(a,b){ return a-b; });
 
-  const dmgMult = shotgunLv>0 ? 0.6 : 1;
+  const dmgMult = shotgunLv>0 ? 0.3 : 1; // shotgun pellets hit hard in aggregate, so each individual pellet is weak
   let r = 6;
   if(shotgunLv>0) r = 5;
   if(pierceLv>0) r += pierceLv;
@@ -1283,8 +1349,9 @@ function update(dt, t){
   const len = Math.hypot(dx,dy);
   if(len>0){ dx/=len; dy/=len; }
   if(joyMove.active && (joyMove.x!==0 || joyMove.y!==0)){ dx = joyMove.x; dy = joyMove.y; }
-  let nx = player.x + dx*player.speed;
-  let ny = player.y + dy*player.speed;
+  const effSpeed = player.speed * (player.slowTimer>0 ? player.slowMult : 1);
+  let nx = player.x + dx*effSpeed;
+  let ny = player.y + dy*effSpeed;
   nx = Math.max(WALL+player.r, Math.min(W-WALL-player.r, nx));
   ny = Math.max(WALL+player.r, Math.min(H-WALL-player.r, ny));
   player.x = nx; player.y = ny;
@@ -1358,10 +1425,55 @@ function update(dt, t){
     if(en.hp<=0) continue;
     if(en.hitFlash>0) en.hitFlash--;
 
-    if(en.type==='chaser' || en.type==='brute'){
+    if(en.type==='chaser' || en.type==='brute' || en.type==='debuffer'){
       const ang = Math.atan2(player.y-en.y, player.x-en.x);
       en.x += Math.cos(ang)*en.speed;
       en.y += Math.sin(ang)*en.speed;
+    } else if(en.type==='shooter'){
+      const d = dist(en,player);
+      const ang = Math.atan2(player.y-en.y, player.x-en.x);
+      if(d > 240){ en.x += Math.cos(ang)*en.speed; en.y += Math.sin(ang)*en.speed; }
+      en.cd--;
+      if(en.cd<=0){
+        en.cd = 90;
+        eprojectiles.push({x:en.x,y:en.y,vx:Math.cos(ang)*3.4, vy:Math.sin(ang)*3.4, r:7});
+      }
+    } else if(en.type==='charger'){
+      if(en.chargeState==='approach'){
+        const ang = Math.atan2(player.y-en.y, player.x-en.x);
+        en.x += Math.cos(ang)*en.speed; en.y += Math.sin(ang)*en.speed;
+        if(dist(en,player) < 240){
+          en.chargeState = 'windup';
+          en.chargeCd = 26;
+          en.dashAngle = ang;
+        }
+      } else if(en.chargeState==='windup'){
+        en.chargeCd--;
+        if(en.chargeCd<=0){ en.chargeState='dash'; en.chargeCd=20; }
+      } else if(en.chargeState==='dash'){
+        en.x += Math.cos(en.dashAngle)*en.dashSpeed;
+        en.y += Math.sin(en.dashAngle)*en.dashSpeed;
+        en.chargeCd--;
+        if(en.chargeCd<=0){ en.chargeState='cooldown'; en.chargeCd=55; }
+      } else if(en.chargeState==='cooldown'){
+        en.chargeCd--;
+        if(en.chargeCd<=0) en.chargeState='approach';
+      }
+    } else if(en.type==='bomber'){
+      const ang = Math.atan2(player.y-en.y, player.x-en.x);
+      en.x += Math.cos(ang)*en.speed; en.y += Math.sin(ang)*en.speed;
+      if(!en.exploded){
+        en.fuse--;
+        const d = dist(en,player);
+        if(d < 55 || en.fuse<=0){
+          en.exploded = true;
+          if(d < 95 && player.invuln<=0){ damagePlayer(2, null); }
+          spawnParticles(en.x, en.y, '#ff9040', 26);
+          spawnParticles(en.x, en.y, '#ff3868', 14);
+          en.hp = 0;
+          if(!en.coinDropped){ en.coinDropped = true; spawnCoins(en); }
+        }
+      }
     } else if(en.type==='boss'){
       if(en.bossKind==='sentinel'){
         const ang = Math.atan2(player.y-en.y, player.x-en.x);
@@ -1413,6 +1525,11 @@ function update(dt, t){
 
     if(player.invuln<=0 && dist(en,player) < en.r+player.r){
       damagePlayer(en.dmgTouch, en);
+      if(en.type==='debuffer'){
+        player.slowTimer = 110;
+        player.slowMult = 0.5;
+        spawnParticles(player.x, player.y, '#b26bff', 10);
+      }
       const thornsPower = (player.armorPower && player.armorPower.thorns) || 0;
       if(thornsPower > 0 && en.hp > 0){
         en.hp -= thornsPower;
@@ -1475,6 +1592,7 @@ function update(dt, t){
   particles = particles.filter(function(pt){ return pt.life>0; });
 
   if(player.invuln>0) player.invuln--;
+  if(player.slowTimer>0) player.slowTimer--;
   if(player.shieldMax > 0){
     if(player.shieldRegenCd > 0) player.shieldRegenCd--;
     else player.shield = Math.min(player.shieldMax, player.shield + 0.035);
@@ -1638,6 +1756,10 @@ function drawEnemy(en){
   ctx.save();
   let color = '#ff3868';
   if(en.type==='brute') color = '#6de24e';
+  if(en.type==='shooter') color = '#4a9dd9';
+  if(en.type==='charger') color = en.chargeState==='windup' ? '#ffffff' : '#ff9040';
+  if(en.type==='bomber') color = '#ffd23f';
+  if(en.type==='debuffer') color = '#b26bff';
   if(en.type==='boss') color = BOSS_INFO[en.bossKind] ? BOSS_INFO[en.bossKind].color : '#ff3868';
   ctx.shadowColor = color;
   ctx.shadowBlur = en.type==='boss' ? 18 : 10;
