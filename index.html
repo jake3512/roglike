@@ -306,6 +306,7 @@ button:disabled{ opacity:0.4; cursor:not-allowed; }
 }
 .equip-slot-mini.filled{ border-style:solid; color:#1a1420; box-shadow: 0 0 10px currentColor; }
 .equip-slot-mini.weapon{ border-color: var(--cyan); }
+.equip-slot-mini.armor{ border-color: #ff9ab0; }
 
 .stage-row{ display:flex; gap:8px; justify-content:center; flex-wrap:wrap; }
 .stage-btn{
@@ -435,6 +436,9 @@ button:disabled{ opacity:0.4; cursor:not-allowed; }
       <p class="section-label" id="weaponComboLabel" style="margin-top:8px; color:#a9d4f0;">현재 조합: 기본 눈물</p>
       <p class="section-label" style="margin-top:16px;">보조 아이템 슬롯 (최대 2개, 중첩 가능)</p>
       <div class="slot-row" id="passiveSlotRow"></div>
+      <p class="section-label" style="margin-top:16px;">방어구 슬롯 (최대 2개) — 중첩하면 효과가 강해지지만 이동속도가 더 느려집니다</p>
+      <div class="slot-row" id="armorSlotRow"></div>
+      <p class="section-label" id="armorComboLabel" style="margin-top:8px; color:#ff9ab0;">현재 방어구: 방어구 없음</p>
     </div>
     <div class="page-box">
       <div class="item-grid" id="inventoryGrid"></div>
@@ -506,6 +510,7 @@ let currency = 0;
 let inventory = {};
 let equippedWeapons = [];
 let equippedPassives = [];
+let equippedArmors = [];
 let currentStage = 1;
 let maxStageUnlocked = 1;
 
@@ -526,6 +531,18 @@ function composeWeaponName(mods){
   }).join('+') + ' 눈물';
 }
 
+const ARMOR_MOD_NAME = {
+  thorns: '반격', ward: '방벽', barrier: '보호막', reflect: '반사'
+};
+function composeArmorName(mods){
+  if(!mods || mods.length===0) return '방어구 없음';
+  const counts = {};
+  mods.forEach(function(m){ counts[m] = (counts[m]||0) + 1; });
+  return Object.keys(counts).map(function(m){
+    return ARMOR_MOD_NAME[m] + (counts[m]>1 ? ' Lv.'+counts[m] : '');
+  }).join('+');
+}
+
 const ITEM_POOL = [
   // ---- weapon-mod items: equip up to 3, effects combine & stack ----
   {id:'triple_shot',   type:'weapon', mod:'triple',    name:'세 갈래 눈물',       rarity:'common',    desc:'세 방향으로 동시 발사 (중첩 시 각도 확장)',        apply:p=>{ (p.weaponMods=p.weaponMods||[]).push('triple'); }},
@@ -535,6 +552,24 @@ const ITEM_POOL = [
   {id:'boomerang_tear',type:'weapon', mod:'boomerang', name:'되돌아오는 눈물',    rarity:'rare',      desc:'날아갔다가 돌아옴 (중첩 시 더 멀리·빠르게)',         apply:p=>{ (p.weaponMods=p.weaponMods||[]).push('boomerang'); }},
   {id:'explosive_tear',type:'weapon', mod:'explosive', name:'폭발하는 눈물',      rarity:'legendary', desc:'적중 시 폭발 (중첩 시 범위·피해 증가)',            apply:p=>{ (p.weaponMods=p.weaponMods||[]).push('explosive'); }},
   {id:'laser_beam',    type:'weapon', mod:'laser',     name:'끊이지 않는 광선',   rarity:'legendary', desc:'지속 피해 광선 (중첩 시 초당 피해 증가)',           apply:p=>{ (p.weaponMods=p.weaponMods||[]).push('laser'); }},
+
+  // ---- armor-mod items: equip up to 2, effects combine & stack, but
+  // every one of them also slows you down — heavier defense, heavier feet.
+  {id:'armor_thorns_s', type:'armor', mod:'thorns',  name:'가시 돋친 팔찌',        rarity:'common',    desc:'접촉한 적에게 반격 피해 +1.0 (이동속도 -0.25)',              apply:p=>{ (p.armorMods=p.armorMods||[]).push('thorns'); p.armorPower.thorns += 1.0; p.speed -= 0.25; }},
+  {id:'armor_thorns_m', type:'armor', mod:'thorns',  name:'가시 갑주 조각',        rarity:'rare',      desc:'접촉한 적에게 반격 피해 +1.8 (이동속도 -0.35)',              apply:p=>{ (p.armorMods=p.armorMods||[]).push('thorns'); p.armorPower.thorns += 1.8; p.speed -= 0.35; }},
+  {id:'armor_thorns_l', type:'armor', mod:'thorns',  name:'복수의 가시 갑옷',       rarity:'legendary', desc:'접촉한 적에게 반격 피해 +3.0 (이동속도 -0.5)',               apply:p=>{ (p.armorMods=p.armorMods||[]).push('thorns'); p.armorPower.thorns += 3.0; p.speed -= 0.5; }},
+
+  {id:'armor_ward_s', type:'armor', mod:'ward', name:'낡은 방패 조각',      rarity:'common',    desc:'받는 피해 15% 감소 (이동속도 -0.3, 중첩 시 곱연산)',    apply:p=>{ (p.armorMods=p.armorMods||[]).push('ward'); p.wardMult = (p.wardMult===undefined?1:p.wardMult) * 0.85; p.speed -= 0.3; }},
+  {id:'armor_ward_m', type:'armor', mod:'ward', name:'묵직한 강철 흉갑',     rarity:'rare',      desc:'받는 피해 25% 감소 (이동속도 -0.4, 중첩 시 곱연산)',    apply:p=>{ (p.armorMods=p.armorMods||[]).push('ward'); p.wardMult = (p.wardMult===undefined?1:p.wardMult) * 0.75; p.speed -= 0.4; }},
+  {id:'armor_ward_l', type:'armor', mod:'ward', name:'용의 비늘 갑옷',      rarity:'legendary', desc:'받는 피해 40% 감소 (이동속도 -0.55, 중첩 시 곱연산)',   apply:p=>{ (p.armorMods=p.armorMods||[]).push('ward'); p.wardMult = (p.wardMult===undefined?1:p.wardMult) * 0.60; p.speed -= 0.55; }},
+
+  {id:'armor_barrier_s', type:'armor', mod:'barrier', name:'깜빡이는 보호막 목걸이', rarity:'common',    desc:'서서히 재생되는 보호막 +4 (이동속도 -0.3)',   apply:p=>{ (p.armorMods=p.armorMods||[]).push('barrier'); p.armorPower.barrier += 4; p.speed -= 0.3; }},
+  {id:'armor_barrier_m', type:'armor', mod:'barrier', name:'안정된 보호막 발생기',   rarity:'rare',      desc:'서서히 재생되는 보호막 +7 (이동속도 -0.4)',   apply:p=>{ (p.armorMods=p.armorMods||[]).push('barrier'); p.armorPower.barrier += 7; p.speed -= 0.4; }},
+  {id:'armor_barrier_l', type:'armor', mod:'barrier', name:'고대의 방벽 문장',      rarity:'legendary', desc:'서서히 재생되는 보호막 +12 (이동속도 -0.6)',  apply:p=>{ (p.armorMods=p.armorMods||[]).push('barrier'); p.armorPower.barrier += 12; p.speed -= 0.6; }},
+
+  {id:'armor_reflect_s', type:'armor', mod:'reflect', name:'가시 박힌 장갑',        rarity:'common',    desc:'피격 시 공격자에게 반사 피해 +1.0 (이동속도 -0.3)',  apply:p=>{ (p.armorMods=p.armorMods||[]).push('reflect'); p.armorPower.reflect += 1.0; p.speed -= 0.3; }},
+  {id:'armor_reflect_m', type:'armor', mod:'reflect', name:'가시 박힌 판금 장갑',    rarity:'rare',      desc:'피격 시 공격자에게 반사 피해 +1.8 (이동속도 -0.45)', apply:p=>{ (p.armorMods=p.armorMods||[]).push('reflect'); p.armorPower.reflect += 1.8; p.speed -= 0.45; }},
+  {id:'armor_reflect_l', type:'armor', mod:'reflect', name:'복수의 갑주',           rarity:'legendary', desc:'피격 시 공격자에게 반사 피해 +3.2 (이동속도 -0.6)',  apply:p=>{ (p.armorMods=p.armorMods||[]).push('reflect'); p.armorPower.reflect += 3.2; p.speed -= 0.6; }},
 
   // ---- passive items: many small/medium/large tiers per stat, plus multi-stat combos ----
   {id:'tear_dmg_s',   type:'passive', name:'금이 간 눈물방울',      rarity:'common',    desc:'공격력 +0.5',                     apply:p=>{ p.dmg += 0.5; }},
@@ -575,7 +610,7 @@ const ITEM_POOL = [
   {id:'reaper_contract',type:'passive', name:'저승사자의 낡은 계약서', rarity:'legendary', desc:'공격력 대폭 상승 (대신 최대 체력 -1칸)',           apply:p=>{ p.dmg+=2.5; p.maxHearts=Math.max(2,p.maxHearts-2); p.hearts=Math.min(p.hearts,p.maxHearts); }},
   {id:'sigil_gluttony', type:'passive', name:'폭식의 인장',        rarity:'legendary', desc:'공격력·속도·체력·코인 획득량 전부 상승',           apply:p=>{ p.dmg+=1; p.speed+=0.6; p.maxHearts+=2; p.hearts+=2; p.coinMult=(p.coinMult||1)*1.3; }}
 ];
-const TYPE_LABEL = {weapon:'무기', passive:'보조 아이템'};
+const TYPE_LABEL = {weapon:'무기', passive:'보조 아이템', armor:'방어구'};
 function itemById(id){ return ITEM_POOL.find(i=>i.id===id); }
 
 const PULL_COST = 15;
@@ -643,17 +678,18 @@ function renderHome(){
   renderStageRow();
   const box = document.getElementById('homeEquipSummary');
   box.innerHTML = '';
-  const slots = [equippedWeapons[0], equippedWeapons[1], equippedWeapons[2], equippedPassives[0], equippedPassives[1]];
+  const slots = [equippedWeapons[0], equippedWeapons[1], equippedWeapons[2], equippedPassives[0], equippedPassives[1], equippedArmors[0], equippedArmors[1]];
   slots.forEach(function(id, i){
     const isWeaponSlot = i < 3;
+    const isArmorSlot = i >= 5;
     const div = document.createElement('div');
-    div.className = 'equip-slot-mini' + (id?' filled':'') + (isWeaponSlot?' weapon':'');
+    div.className = 'equip-slot-mini' + (id?' filled':'') + (isWeaponSlot?' weapon':'') + (isArmorSlot?' armor':'');
     if(id){
       const it = itemById(id);
       div.style.background = rarityColor(it.rarity);
       div.title = it.name;
     } else {
-      div.textContent = isWeaponSlot ? '무기 없음' : '빈 슬롯';
+      div.textContent = isWeaponSlot ? '무기 없음' : isArmorSlot ? '방어 없음' : '빈 슬롯';
     }
     box.appendChild(div);
   });
@@ -663,7 +699,7 @@ let equipMsgTimer = null;
 function ownedCount(id){ return inventory[id] || 0; }
 function equippedCount(id){
   const it = itemById(id);
-  const list = it.type==='weapon' ? equippedWeapons : equippedPassives;
+  const list = it.type==='weapon' ? equippedWeapons : it.type==='armor' ? equippedArmors : equippedPassives;
   return list.filter(function(x){ return x===id; }).length;
 }
 function equipOneMore(id){
@@ -672,6 +708,9 @@ function equipOneMore(id){
   if(it.type === 'weapon'){
     if(equippedWeapons.length >= 3){ flashEquipMsg('무기 슬롯이 가득 찼습니다 (최대 3개)'); return; }
     equippedWeapons.push(id);
+  } else if(it.type === 'armor'){
+    if(equippedArmors.length >= 2){ flashEquipMsg('방어구 슬롯이 가득 찼습니다 (최대 2개)'); return; }
+    equippedArmors.push(id);
   } else {
     if(equippedPassives.length >= 2){ flashEquipMsg('보조 아이템 슬롯이 가득 찼습니다 (최대 2개)'); return; }
     equippedPassives.push(id);
@@ -680,6 +719,7 @@ function equipOneMore(id){
 }
 function unequipSlot(type, index){
   if(type === 'weapon'){ equippedWeapons.splice(index, 1); }
+  else if(type === 'armor'){ equippedArmors.splice(index, 1); }
   else { equippedPassives.splice(index, 1); }
   renderInventory();
 }
@@ -735,6 +775,28 @@ function renderInventory(){
       div.textContent = '빈 슬롯';
     }
     pRow.appendChild(div);
+  }
+
+  const aRow = document.getElementById('armorSlotRow');
+  if(aRow){
+    aRow.innerHTML = '';
+    for(let i=0;i<2;i++){
+      const id = equippedArmors[i];
+      const div = document.createElement('div');
+      div.className = 'equip-slot' + (id?' filled':'');
+      if(id){
+        const it = itemById(id);
+        div.style.background = rarityColor(it.rarity);
+        div.textContent = it.name;
+        div.title = '클릭하면 해제됩니다';
+        div.onclick = (function(idx){ return function(){ unequipSlot('armor', idx); }; })(i);
+      } else {
+        div.textContent = '빈 슬롯';
+      }
+      aRow.appendChild(div);
+    }
+    const armorComboLabel = document.getElementById('armorComboLabel');
+    if(armorComboLabel) armorComboLabel.textContent = '현재 방어구: ' + composeArmorName(equippedArmors.map(function(id){ return itemById(id).mod; }));
   }
 
   const grid = document.getElementById('inventoryGrid');
@@ -875,7 +937,9 @@ function freshPlayer(){
     x: W/2, y: H/2, r: 14,
     speed: 3.1, dmg: 1, tearRate: 260, tearSpeed: 6.4, tearRange: 320,
     lastShot: 0, maxHearts: 6, hearts: 6, invuln: 0, invulnBonus: 0, coinMult: 1,
-    dmgReduction: 0, weaponMods: [],
+    dmgReduction: 0, weaponMods: [], armorMods: [],
+    armorPower: {thorns:0, barrier:0, reflect:0}, wardMult: 1,
+    shield: 0, shieldMax: 0, shieldRegenCd: 0,
     facing: {x:0,y:1}
   };
 }
@@ -883,6 +947,10 @@ function freshPlayer(){
 function applyEquippedItems(p){
   for(const id of equippedWeapons){ const w = itemById(id); if(w) w.apply(p); }
   for(const id of equippedPassives){ const it = itemById(id); if(it) it.apply(p); }
+  for(const id of equippedArmors){ const a = itemById(id); if(a) a.apply(p); }
+}
+function armorLevel(mod){
+  return (player.armorMods||[]).filter(function(m){ return m===mod; }).length;
 }
 
 // Only melee enemies ('chaser'/'brute') spawn in normal rooms — regular
@@ -983,6 +1051,10 @@ function resetGame(){
   discovered = {};
   player = freshPlayer();
   applyEquippedItems(player);
+  const barrierLv = (player.armorPower && player.armorPower.barrier) || 0;
+  player.shieldMax = barrierLv;
+  player.shield = player.shieldMax;
+  player.speed = Math.max(0.9, player.speed); // armor can slow you, but never to a crawl
   tears = [];
   particles = [];
   laserActive = false; laserEnd = null;
@@ -1339,7 +1411,20 @@ function update(dt, t){
     en.x = Math.max(WALL+en.r, Math.min(W-WALL-en.r, en.x));
     en.y = Math.max(WALL+en.r, Math.min(H-WALL-en.r, en.y));
 
-    if(player.invuln<=0 && dist(en,player) < en.r+player.r){ damagePlayer(en.dmgTouch); }
+    if(player.invuln<=0 && dist(en,player) < en.r+player.r){
+      damagePlayer(en.dmgTouch, en);
+      const thornsPower = (player.armorPower && player.armorPower.thorns) || 0;
+      if(thornsPower > 0 && en.hp > 0){
+        en.hp -= thornsPower;
+        en.hitFlash = 8;
+        spawnParticles(en.x, en.y, '#ff9ab0', 10);
+        if(en.hp<=0 && !en.coinDropped){
+          en.coinDropped = true;
+          spawnCoins(en);
+          spawnParticles(en.x, en.y, '#8a2233', 18);
+        }
+      }
+    }
 
     for(const tr of tears){
       if(tr.dist >= 99999) continue;
@@ -1390,6 +1475,10 @@ function update(dt, t){
   particles = particles.filter(function(pt){ return pt.life>0; });
 
   if(player.invuln>0) player.invuln--;
+  if(player.shieldMax > 0){
+    if(player.shieldRegenCd > 0) player.shieldRegenCd--;
+    else player.shield = Math.min(player.shieldMax, player.shield + 0.035);
+  }
 
   const rk = key(curX,curY);
   if(!visited[rk] && isRoomClear() && ROOMS[rk].type!=='start'){ visited[rk] = true; roomsCleared++; }
@@ -1413,11 +1502,36 @@ function update(dt, t){
 
 function dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
 
-function damagePlayer(amount){
-  const loss = Math.max(1, amount*2 - (player.dmgReduction||0));
-  player.hearts = Math.max(0, player.hearts - loss);
+function damagePlayer(amount, source){
+  let loss = Math.max(1, amount*2 - (player.dmgReduction||0));
+
+  const wardMult = player.wardMult===undefined ? 1 : player.wardMult;
+  if(wardMult < 1){
+    loss = Math.max(0.5, loss * wardMult);
+  }
+
+  if(player.shield > 0){
+    const absorbed = Math.min(player.shield, loss);
+    player.shield -= absorbed;
+    loss -= absorbed;
+  }
+
+  if(loss > 0) player.hearts = Math.max(0, player.hearts - loss);
   player.invuln = 60 + (player.invulnBonus||0);
+  player.shieldRegenCd = 180;
   spawnParticles(player.x, player.y, '#b3273f', 10);
+
+  const reflectPower = (player.armorPower && player.armorPower.reflect) || 0;
+  if(reflectPower > 0 && source && typeof source.hp === 'number'){
+    source.hp -= reflectPower;
+    source.hitFlash = 8;
+    spawnParticles(source.x, source.y, '#ff9ab0', 10);
+    if(source.hp<=0 && !source.coinDropped){
+      source.coinDropped = true;
+      spawnCoins(source);
+      spawnParticles(source.x, source.y, '#8a2233', 18);
+    }
+  }
 }
 
 function spawnParticles(x,y,color,n){
@@ -1495,6 +1609,16 @@ function drawRoom(){
 
 function drawPlayer(){
   const flash = player.invuln>0 && Math.floor(player.invuln/4)%2===0;
+  if(player.shieldMax > 0 && player.shield > 0){
+    ctx.save();
+    ctx.globalAlpha = 0.35 + 0.35*(player.shield/player.shieldMax);
+    ctx.strokeStyle = '#4a9dd9';
+    ctx.shadowColor = '#4a9dd9';
+    ctx.shadowBlur = 10;
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(player.x, player.y, player.r+6, 0, Math.PI*2); ctx.stroke();
+    ctx.restore();
+  }
   ctx.save();
   ctx.globalAlpha = flash ? 0.4 : 1;
   ctx.shadowColor = '#ffd23f';
@@ -1588,18 +1712,29 @@ function drawMinimap(){
     if(x<minX) minX=x; if(x>maxX) maxX=x;
     if(y<minY) minY=y; if(y>maxY) maxY=y;
   });
-  const cell = 11, gap = 2, pad = 7;
+  const cell = 17, gap = 3, pad = 10;
   const cols = maxX-minX+1, rows = maxY-minY+1;
   const mapW = cols*cell + (cols-1)*gap;
   const mapH = rows*cell + (rows-1)*gap;
   const boxW = mapW + pad*2, boxH = mapH + pad*2;
-  const boxX = W - boxW - 12;
-  const boxY = H - boxH - 12;
+
+  // Position in the top-left, just below the hearts HUD chip. The hearts
+  // chip is a DOM element sized in real CSS pixels, while this canvas
+  // draws in its own internal coordinate space — convert via the actual
+  // on-screen scale so the two never overlap regardless of display size.
+  const boxX = 12;
+  let boxY = 60;
+  const canvasRect = canvas.getBoundingClientRect();
+  if(canvasRect.width > 0 && heartsEl){
+    const scale = W / canvasRect.width;
+    const heartsRect = heartsEl.getBoundingClientRect();
+    boxY = Math.max(40, (heartsRect.bottom - canvasRect.top) * scale + 10);
+  }
 
   ctx.save();
-  ctx.fillStyle = 'rgba(5,3,12,0.75)';
+  ctx.fillStyle = 'rgba(5,3,12,0.78)';
   ctx.fillRect(boxX, boxY, boxW, boxH);
-  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.14)';
   ctx.lineWidth = 1;
   ctx.strokeRect(boxX+0.5, boxY+0.5, boxW-1, boxH-1);
 
@@ -1620,8 +1755,8 @@ function drawMinimap(){
     ctx.fillRect(cx, cy, cell, cell);
     if(x===curX && y===curY){
       ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(cx-1.5, cy-1.5, cell+3, cell+3);
+      ctx.lineWidth = 2;
+      ctx.strokeRect(cx-2, cy-2, cell+4, cell+4);
     }
   });
   ctx.restore();
