@@ -138,16 +138,19 @@ h1{
    on a short landscape phone screen this uses the spare horizontal room
    instead of eating into the limited vertical space. */
 .side-bar{
+  position:relative;
   width: 84px;
   flex-shrink:0;
-  display:flex;
-  align-items:center;
-  justify-content:center;
   background: linear-gradient(180deg, #241a33, #150f20);
   touch-action: none;
 }
 .side-bar.left{ border-right: 2px solid var(--stone-light); }
 .side-bar.right{ border-left: 2px solid var(--stone-light); }
+.side-bar .joystick{
+  position:absolute;
+  top:42%; left:50%;
+  transform: translate(-50%, -50%);
+}
 
 .joystick{
   position:relative;
@@ -272,6 +275,11 @@ button:disabled{ opacity:0.4; cursor:not-allowed; }
 
 .page{ display:none; }
 .page.active{ display:flex; flex-direction:column; gap:16px; }
+/* #pageGame is both .game-frame (row) and .page.active (column) — the
+   ID selector here guarantees the row layout wins regardless of class
+   specificity, so the joysticks stay side-by-side instead of stacking
+   top/bottom. */
+#pageGame.active{ flex-direction: row; gap:0; }
 
 .currency-bar{
   display:flex;
@@ -1227,8 +1235,7 @@ document.addEventListener('pointermove', function(e){
 // Sizes the game screen so the whole app (header + screen + control bar)
 // fits inside the visible viewport with no scrolling, in both portrait
 // and landscape. Recomputed on load/resize/orientation change and every
-// time the game page becomes visible (control-bar height is only
-// measurable once its subtree is actually laid out, i.e. not display:none).
+// time the game page becomes visible.
 const pageGameEl = document.getElementById('pageGame');
 const SIDE_BAR_W = 84; // must match .side-bar { width } in CSS
 
@@ -1385,7 +1392,7 @@ function update(dt, t){
     if(tr.homing){
       const homLv = tr.homingLv || 1;
       const detectR = 220 + 50*homLv;
-      const turnRate = 0.08 + 0.05*homLv;
+      const turnRate = 0.025 + 0.012*homLv; // sharply reduced tracking strength — gentle curve, not a lock-on
       let nearest=null, nd=99999;
       for(const en of enemies){ if(en.hp<=0) continue; const dd=dist(en,tr); if(dd<nd){ nd=dd; nearest=en; } }
       if(nearest && nd < detectR){
@@ -1602,19 +1609,24 @@ function update(dt, t){
   if(!visited[rk] && isRoomClear() && ROOMS[rk].type!=='start'){ visited[rk] = true; roomsCleared++; }
   if(!visited[rk] && ROOMS[rk].type==='start'){ visited[rk] = true; }
 
+  // Check death BEFORE the stage-clear check. If the boss's final blow to
+  // you and your final blow to the boss land in the same frame (e.g. a
+  // thorns/reflect counter-kill), this ensures you're correctly recorded
+  // as having died rather than the stage being marked cleared and the
+  // next one unlocked out from under you.
+  if(player.hearts<=0 && state==='playing'){
+    state = 'lost';
+    loseOverlay.classList.add('show');
+  }
   if(ROOMS[rk].type==='boss' && enemies.length>0 && isRoomClear() && state==='playing'){
     state = 'won';
-    if(currentStage === maxStageUnlocked){
-      maxStageUnlocked++;
+    if(currentStage >= maxStageUnlocked){
+      maxStageUnlocked = currentStage + 1;
       winText.textContent = '스테이지 ' + currentStage + ' 클리어! 다음 스테이지가 열렸습니다.';
     } else {
       winText.textContent = '스테이지 ' + currentStage + '를 다시 클리어했습니다.';
     }
     winOverlay.classList.add('show');
-  }
-  if(player.hearts<=0 && state==='playing'){
-    state = 'lost';
-    loseOverlay.classList.add('show');
   }
 }
 
